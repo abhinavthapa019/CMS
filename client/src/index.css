@@ -1,0 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+@theme {
+	--color-primary: #202983;
+	--color-secondary: #4c616c;
+	--color-background: #f8f9fa;
+	--color-on-surface: #191c1d;
+	--color-on-primary: #ffffff;
+	--color-primary-fixed: #e0e0ff;
+	--color-primary-container: #39429b;
+	--color-secondary-container: #cfe6f2;
+	--color-on-secondary-container: #354a53;
+	--color-tertiary-fixed: #a6eff3;
+	--color-on-tertiary-fixed-variant: #004f53;
+	--color-surface-container-lowest: #ffffff;
+	--color-surface-container-low: #f3f4f5;
+	--color-surface-container: #edeeef;
+	--color-surface-container-high: #e7e8e9;
+	--color-surface-container-highest: #e1e3e4;
+	--color-outline-variant: #c3c6d4;
+	--color-error: #ba1a1a;
+	--color-error-container: #ffdad6;
+	--color-on-error: #ffffff;
+
+	--font-headline: "Manrope", sans-serif;
+	--font-body: "Inter", sans-serif;
+	--font-label: "Inter", sans-serif;
+}
+
+body {
+	font-family: var(--font-body);
+	background-color: var(--color-background);
+	color: var(--color-on-surface);
+}
+
+.font-headline {
+	font-family: var(--font-headline);
+}
+
+.material-symbols-outlined {
+	font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}

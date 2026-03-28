@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+}
+
+enum Job {
+  teacher
+  services
+  health
+  at_home
+  other
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  name      String
+  email     String    @unique
+  password  String
+  role      Role      @default(TEACHER)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  attendance Attendance[]
+  marks      Mark[]
+}
+
+model Student {
+  id         Int       @id @default(autoincrement())
+  firstName  String
+  lastName   String
+  rollNumber String    @unique
+  motherJob  Job
+  fatherJob  Job
+  travelTime Int
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  attendance Attendance[]
+  marks      Mark[]
+  predictions Prediction[]
+}
+
+model Attendance {
+  id        Int      @id @default(autoincrement())
+  date      DateTime
+  present   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  student   Student  @relation(fields: [studentId], references: [id])
+  studentId Int
+
+  teacher   User     @relation(fields: [teacherId], references: [id])
+  teacherId Int
+
+  @@unique([studentId, date])
+  @@index([teacherId])
+}
+
+model Mark {
+  id         Int      @id @default(autoincrement())
+  g1         Int
+  g2         Int
+  finalGrade Int?
+  activities Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  student   Student  @relation(fields: [studentId], references: [id])
+  studentId Int
+
+  teacher   User     @relation(fields: [teacherId], references: [id])
+  teacherId Int
+
+  @@index([studentId])
+  @@index([teacherId])
+}
+
+model Prediction {
+  id             Int      @id @default(autoincrement())
+  predictedGrade Int
+  payload        Json
+  createdAt      DateTime @default(now())
+
+  student   Student  @relation(fields: [studentId], references: [id])
+  studentId Int
+
+  @@index([studentId])
+}
