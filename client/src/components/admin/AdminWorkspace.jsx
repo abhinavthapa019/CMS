@@ -18,8 +18,16 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   const [notice, setNotice] = useState("");
 
   const [users, setUsers] = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [students, setStudents] = useState([]);
   const [classFilter, setClassFilter] = useState({ batch: "", faculty: "", section: "" });
+  const [attendanceFilter, setAttendanceFilter] = useState({
+    batch: "ELEVEN",
+    faculty: "SCIENCE",
+    section: "BIO",
+    department: "SCIENCE",
+    subjectId: "",
+  });
   const [attendanceSummary, setAttendanceSummary] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [teacherSearch, setTeacherSearch] = useState("");
@@ -29,7 +37,8 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     name: "",
     email: "",
     password: "",
-    role: "TEACHER",
+    subjectId: "",
+    batch: "ELEVEN",
   });
 
   const [studentForm, setStudentForm] = useState({
@@ -52,11 +61,19 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     try {
       const [usersRes, attendanceRes, analyticsRes] = await Promise.all([
         api("/api/users", { token }),
-        api("/api/students/attendance-summary", { token }),
+        api("/api/subjects", { token }),
         api("/api/analytics/admin/overview", { token }),
       ]);
       setUsers(usersRes.users || []);
-      setAttendanceSummary(attendanceRes.summary || []);
+      const subjectRows = attendanceRes.subjects || [];
+      setSubjects(subjectRows);
+
+      setTeacherForm((prev) => {
+        if (prev.subjectId) return prev;
+        const firstForScience = subjectRows.find((s) => s.faculty === "SCIENCE") || subjectRows[0];
+        return { ...prev, subjectId: firstForScience ? String(firstForScience.id) : "" };
+      });
+
       setAnalytics(analyticsRes);
     } catch (e) {
       setError(e.message || "Failed to load admin data");
@@ -68,6 +85,27 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   useEffect(() => {
     loadAdminData();
   }, [token, user?.role]);
+
+  useEffect(() => {
+    if (!token || user?.role !== "ADMIN") return;
+    const q = new URLSearchParams({
+      batch: attendanceFilter.batch,
+      faculty: attendanceFilter.faculty,
+      section: attendanceFilter.section,
+      ...(attendanceFilter.subjectId ? { subjectId: attendanceFilter.subjectId } : {}),
+    }).toString();
+
+    api(`/api/students/attendance-summary?${q}`, { token })
+      .then((res) => setAttendanceSummary(res.summary || []))
+      .catch((e) => setError(e.message || "Failed to load attendance summary"));
+  }, [
+    token,
+    user?.role,
+    attendanceFilter.batch,
+    attendanceFilter.faculty,
+    attendanceFilter.section,
+    attendanceFilter.subjectId,
+  ]);
 
   useEffect(() => {
     if (!token || user?.role !== "ADMIN") return;
@@ -103,10 +141,24 @@ export default function AdminWorkspace({ user, token, onLogout }) {
       await api("/api/users", {
         token,
         method: "POST",
-        body: teacherForm,
+        body: {
+          name: teacherForm.name,
+          email: teacherForm.email,
+          password: teacherForm.password,
+          role: "TEACHER",
+          subjectAssignments: teacherForm.subjectId
+            ? [{ subjectId: Number(teacherForm.subjectId), batch: teacherForm.batch || null }]
+            : [],
+        },
       });
       setNotice("Teacher account created successfully.");
-      setTeacherForm({ name: "", email: "", password: "", role: "TEACHER" });
+      setTeacherForm((prev) => ({
+        name: "",
+        email: "",
+        password: "",
+        subjectId: prev.subjectId,
+        batch: "ELEVEN",
+      }));
       await loadAdminData();
       setTab("teachers");
     } catch (e) {
@@ -218,6 +270,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
           <TeachersSection
             loading={loading}
             users={filteredUsers}
+            subjects={subjects}
             search={teacherSearch}
             onSearchChange={setTeacherSearch}
             teacherForm={teacherForm}
@@ -247,7 +300,34 @@ export default function AdminWorkspace({ user, token, onLogout }) {
         ) : null}
 
         {tab === "attendance" ? (
-          <AttendanceSummarySection loading={loading} summary={attendanceSummary} />
+          <AttendanceSummarySection
+            loading={loading}
+            summary={attendanceSummary}
+            subjects={subjects}
+            filter={attendanceFilter}
+            onFilterChange={(field, value) => {
+              setAttendanceFilter((prev) => {
+                if (field === "faculty") {
+                  const nextSection = value === "SCIENCE" ? "BIO" : "ECONOMICS";
+                  return {
+                    ...prev,
+                    faculty: value,
+                    section: nextSection,
+                    department: value,
+                    subjectId: "",
+                  };
+                }
+                if (field === "department") {
+                  return {
+                    ...prev,
+                    department: value,
+                    subjectId: "",
+                  };
+                }
+                return { ...prev, [field]: value };
+              });
+            }}
+          />
         ) : null}
       </main>
     </div>

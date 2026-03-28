@@ -3,6 +3,7 @@ import Field from "./Field";
 export default function TeachersSection({
   loading,
   users,
+  subjects,
   search,
   onSearchChange,
   teacherForm,
@@ -14,7 +15,7 @@ export default function TeachersSection({
 }) {
   return (
     <section className="grid lg:grid-cols-5 gap-4">
-      <form onSubmit={onSubmit} className="lg:col-span-2 bg-surface-container-lowest rounded-2xl p-5 border border-outline-variant/20 space-y-4">
+      <form onSubmit={onSubmit} autoComplete="off" className="lg:col-span-2 bg-surface-container-lowest rounded-2xl p-5 border border-outline-variant/20 space-y-4">
         <h3 className="font-headline text-xl font-bold text-primary">Register Teacher</h3>
         <Field label="Name">
           <input
@@ -28,7 +29,9 @@ export default function TeachersSection({
           <input
             required
             type="email"
-            className="w-full rounded-lg bg-surface-container-highest border-none"
+            autoComplete="new-email"
+            placeholder="teacher.name@campus.local"
+            className="w-full rounded-lg bg-surface-container-highest border-none placeholder:text-secondary/70"
             value={teacherForm.email}
             onChange={(e) => onTeacherFormChange("email", e.target.value)}
           />
@@ -38,27 +41,48 @@ export default function TeachersSection({
             required
             minLength={6}
             type="password"
-            className="w-full rounded-lg bg-surface-container-highest border-none"
+            autoComplete="new-password"
+            placeholder="Min 6 characters"
+            className="w-full rounded-lg bg-surface-container-highest border-none placeholder:text-secondary/70"
             value={teacherForm.password}
             onChange={(e) => onTeacherFormChange("password", e.target.value)}
           />
         </Field>
-        <Field label="Role">
+
+        <Field label="Assigned Subject">
           <select
             className="w-full rounded-lg bg-surface-container-highest border-none"
-            value={teacherForm.role}
-            onChange={(e) => onTeacherFormChange("role", e.target.value)}
+            value={teacherForm.subjectId}
+            onChange={(e) => onTeacherFormChange("subjectId", e.target.value)}
           >
-            <option value="TEACHER">TEACHER</option>
-            <option value="ADMIN">ADMIN</option>
+            <option value="">Select subject</option>
+            {subjects.map((subject) => (
+              <option key={subject.id} value={subject.id}>
+                {subject.name}{subject.faculty ? ` (${subject.faculty})` : " (COMMON)"}
+              </option>
+            ))}
           </select>
         </Field>
+
+        <Field label="Assigned Batch">
+          <select
+            className="w-full rounded-lg bg-surface-container-highest border-none"
+            value={teacherForm.batch}
+            onChange={(e) => onTeacherFormChange("batch", e.target.value)}
+          >
+            <option value="ELEVEN">ELEVEN</option>
+            <option value="TWELVE">TWELVE</option>
+            <option value="">Both (11 and 12)</option>
+          </select>
+        </Field>
+
+        <p className="text-xs text-secondary">Only TEACHER accounts can be registered from this panel.</p>
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !teacherForm.subjectId}
           className="w-full py-3 rounded-lg bg-primary text-on-primary font-semibold disabled:opacity-60"
         >
-          {submitting ? "Saving..." : "Create User"}
+          {submitting ? "Saving..." : "Create Teacher"}
         </button>
       </form>
 

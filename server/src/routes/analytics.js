@@ -10,12 +10,52 @@ function toDateKey(date) {
 }
 
 function classKey(student) {
-  return `${student.batch}-${student.faculty}-${student.section}`;
+  return `${student.batch}|${student.faculty}|${student.section}`;
 }
 
 function withPercent(present, total) {
   if (!total) return 0;
   return Math.round((present / total) * 100);
+}
+
+function classCombosForAssignment(assignment) {
+  const batches = assignment.batch ? [assignment.batch] : [AcademicBatch.ELEVEN, AcademicBatch.TWELVE];
+
+  if (assignment.subject?.faculty === Faculty.SCIENCE) {
+    return batches.flatMap((batch) => [
+      { batch, faculty: Faculty.SCIENCE, section: Section.BIO },
+      { batch, faculty: Faculty.SCIENCE, section: Section.CS },
+    ]);
+  }
+
+  if (assignment.subject?.faculty === Faculty.MANAGEMENT) {
+    return batches.flatMap((batch) => [
+      { batch, faculty: Faculty.MANAGEMENT, section: Section.ECONOMICS },
+      { batch, faculty: Faculty.MANAGEMENT, section: Section.MARKETING },
+    ]);
+  }
+
+  return batches.flatMap((batch) => [
+    { batch, faculty: Faculty.SCIENCE, section: Section.BIO },
+    { batch, faculty: Faculty.SCIENCE, section: Section.CS },
+    { batch, faculty: Faculty.MANAGEMENT, section: Section.ECONOMICS },
+    { batch, faculty: Faculty.MANAGEMENT, section: Section.MARKETING },
+  ]);
+}
+
+async function getAllowedClassSetForTeacher(teacherId) {
+  const assignments = await prisma.teacherSubjectAssignment.findMany({
+    where: { teacherId },
+    include: { subject: { select: { faculty: true } } },
+  });
+
+  const allowed = new Set();
+  for (const assignment of assignments) {
+    for (const cls of classCombosForAssignment(assignment)) {
+      allowed.add(classKey(cls));
+    }
+  }
+  return allowed;
 }
 
 function buildClassSummary(students, attendanceRows, onlyToday = false) {
@@ -100,6 +140,33 @@ router.get(["/api/analytics/teacher/:teacherId", "/analytics/teacher/:teacherId"
   if (req.query.batch) whereStudent.batch = req.query.batch;
   if (req.query.faculty) whereStudent.faculty = req.query.faculty;
   if (req.query.section) whereStudent.section = req.query.section;
+
+  if (req.user.role === Role.TEACHER) {
+    const allowed = await getAllowedClassSetForTeacher(teacherId);
+    if (allowed.size === 0) {
+      return res.json({
+        ok: true,
+        kpis: { trackedStudents: 0, attendancePercent: 0, dailyPresentCount: 0 },
+        classOverview: { averageAttendancePercent: 0, totalPresent: 0, totalAbsent: 0 },
+        distribution: [{ name: "Present", value: 0 }, { name: "Absent", value: 0 }],
+        trend: [],
+        studentPercentages: [],
+        lowAttendance: [],
+      });
+    }
+
+    const requestedClass = req.query.batch && req.query.faculty && req.query.section
+      ? classKey({ batch: req.query.batch, faculty: req.query.faculty, section: req.query.section })
+      : null;
+    if (requestedClass && !allowed.has(requestedClass)) {
+      return res.status(403).json({ ok: false, error: "You do not have access to this class" });
+    }
+
+    whereStudent.OR = [...allowed].map((key) => {
+      const [batch, faculty, section] = key.split("|");
+      return { batch, faculty, section };
+    });
+  }
 
   const students = await prisma.student.findMany({
     where: whereStudent,

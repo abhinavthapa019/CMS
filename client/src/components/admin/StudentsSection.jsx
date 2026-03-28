@@ -16,6 +16,7 @@ export default function StudentsSection({
   deletingStudentId,
 }) {
   const classSelected = classFilter.batch && classFilter.faculty && classFilter.section;
+  const displayBatch = (batch) => (batch === "ELEVEN" ? "11" : batch === "TWELVE" ? "12" : batch);
 
   return (
     <section className="grid lg:grid-cols-5 gap-4">
@@ -52,7 +53,7 @@ export default function StudentsSection({
             onChange={(e) => onStudentFormChange("batch", e.target.value)}
           >
             {BATCH_OPTIONS.map((b) => (
-              <option key={b} value={b}>{b}</option>
+              <option key={b} value={b}>{displayBatch(b)}</option>
             ))}
           </select>
         </Field>
@@ -190,7 +191,7 @@ export default function StudentsSection({
                 <tr key={s.id} className="border-b border-outline-variant/10">
                   <td className="py-2 font-medium">{s.firstName} {s.lastName}</td>
                   <td className="py-2 text-secondary">{s.rollNumber}</td>
-                  <td className="py-2 text-secondary">{s.batch} / {s.faculty} / {s.section}</td>
+                  <td className="py-2 text-secondary">{displayBatch(s.batch)} / {s.faculty} / {s.section}</td>
                   <td className="py-2 text-secondary">{s.motherJob}</td>
                   <td className="py-2 text-secondary">{s.fatherJob}</td>
                   <td className="py-2 text-secondary">{s.travelTime}</td>

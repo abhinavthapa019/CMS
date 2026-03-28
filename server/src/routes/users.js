@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const bcrypt = require("bcryptjs");
 const { z } = require("zod");
-const { Role } = require("@prisma/client");
+const { AcademicBatch, Role } = require("@prisma/client");
 const { prisma } = require("../lib/prisma");
 const { userSelect } = require("../constants/userSelect");
 const { requireAuth } = require("../middlewares/auth");
@@ -14,18 +14,62 @@ const createUserSchema = z.object({
     name: z.string().min(2),
     email: z.string().email(),
     password: z.string().min(6),
-    role: z.nativeEnum(Role).optional().default(Role.TEACHER),
+    role: z.literal(Role.TEACHER).optional().default(Role.TEACHER),
+    subjectAssignments: z
+      .array(
+        z.object({
+          subjectId: z.number().int().positive(),
+          batch: z.nativeEnum(AcademicBatch).nullable().optional(),
+        })
+      )
+      .optional()
+      .default([]),
   }),
 });
 
 router.post("/api/users", requireAuth(Role.ADMIN), validate(createUserSchema), async (req, res) => {
-  const { name, email, password, role } = req.validated.body;
+  const { name, email, password, role, subjectAssignments } = req.validated.body;
+  if (role !== Role.TEACHER) {
+    return res.status(400).json({ ok: false, error: "Only TEACHER registration is allowed" });
+  }
+
+  const uniqueAssignments = new Map();
+  for (const a of subjectAssignments || []) {
+    const key = `${a.subjectId}:${a.batch || "ALL"}`;
+    uniqueAssignments.set(key, { subjectId: a.subjectId, batch: a.batch ?? null });
+  }
+
+  if (uniqueAssignments.size > 0) {
+    const subjects = await prisma.subject.findMany({
+      where: { id: { in: [...uniqueAssignments.values()].map((a) => a.subjectId) } },
+      select: { id: true },
+    });
+    if (subjects.length !== uniqueAssignments.size) {
+      return res.status(400).json({ ok: false, error: "One or more subject assignments are invalid" });
+    }
+  }
+
   try {
     const hashed = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: { name, email, password: hashed, role },
-      select: userSelect,
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: { name, email, password: hashed, role },
+        select: userSelect,
+      });
+
+      if (uniqueAssignments.size > 0) {
+        await tx.teacherSubjectAssignment.createMany({
+          data: [...uniqueAssignments.values()].map((a) => ({
+            teacherId: created.id,
+            subjectId: a.subjectId,
+            batch: a.batch,
+          })),
+        });
+      }
+
+      return created;
     });
+
     return res.status(201).json({ ok: true, user });
   } catch (err) {
     if (err.code === "P2002") {
@@ -57,6 +101,7 @@ router.delete("/api/users/:id", requireAuth(Role.ADMIN), async (req, res) => {
 
   try {
     await prisma.$transaction([
+      prisma.teacherSubjectAssignment.deleteMany({ where: { teacherId: userId } }),
       prisma.attendance.deleteMany({ where: { teacherId: userId } }),
       prisma.mark.deleteMany({ where: { teacherId: userId } }),
       prisma.user.delete({ where: { id: userId } }),

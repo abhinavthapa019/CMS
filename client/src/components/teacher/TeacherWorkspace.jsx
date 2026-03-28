@@ -14,6 +14,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   const [notice, setNotice] = useState("");
 
   const [students, setStudents] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [actionLog, setActionLog] = useState([]);
@@ -44,6 +45,62 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   const [predictionStudentId, setPredictionStudentId] = useState("");
   const [predictionResult, setPredictionResult] = useState(null);
 
+  const allowedClassOptions = useMemo(() => {
+    const map = new Map();
+    for (const a of assignments) {
+      const batches = a.batch ? [a.batch] : ["ELEVEN", "TWELVE"];
+
+      let facultySectionPairs = [];
+      if (a.subject?.faculty === "SCIENCE") {
+        facultySectionPairs = [
+          ["SCIENCE", "BIO"],
+          ["SCIENCE", "CS"],
+        ];
+      } else if (a.subject?.faculty === "MANAGEMENT") {
+        facultySectionPairs = [
+          ["MANAGEMENT", "ECONOMICS"],
+          ["MANAGEMENT", "MARKETING"],
+        ];
+      } else {
+        facultySectionPairs = [
+          ["SCIENCE", "BIO"],
+          ["SCIENCE", "CS"],
+          ["MANAGEMENT", "ECONOMICS"],
+          ["MANAGEMENT", "MARKETING"],
+        ];
+      }
+
+      for (const batch of batches) {
+        for (const [faculty, section] of facultySectionPairs) {
+          const key = `${batch}|${faculty}|${section}`;
+            const batchLabel = batch === "ELEVEN" ? "11" : batch === "TWELVE" ? "12" : batch;
+          if (!map.has(key)) {
+            map.set(key, {
+              batch,
+              faculty,
+              section,
+                label: `${batchLabel} / ${faculty} / ${section}`,
+            });
+          }
+        }
+      }
+    }
+    return [...map.values()];
+  }, [assignments]);
+
+  const classKey = `${classFilters.batch}|${classFilters.faculty}|${classFilters.section}`;
+
+  const allowedSubjectOptions = useMemo(() => {
+    return assignments
+      .filter((a) => {
+        const batchOk = !a.batch || a.batch === classFilters.batch;
+        const facultyOk = !a.subject?.faculty || a.subject.faculty === classFilters.faculty;
+        return batchOk && facultyOk;
+      })
+      .map((a) => a.subject)
+      .filter((subject, idx, arr) => arr.findIndex((s) => s.id === subject.id) === idx);
+  }, [assignments, classFilters.batch, classFilters.faculty]);
+
   function buildClassQuery(filters) {
     const q = new URLSearchParams();
     if (filters.batch) q.set("batch", filters.batch);
@@ -59,15 +116,51 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     setLoading(true);
     setError("");
     try {
-      const query = buildClassQuery(filters);
-      const [studentRes, analyticsRes, subjectRes] = await Promise.all([
-        api(`/api/students${query}`, { token }),
-        api(`/api/analytics/teacher/${user.id}${query}`, { token }),
+      const [subjectRes, assignmentRes] = await Promise.all([
         api("/api/subjects", { token }),
+        api("/api/teacher-subject-assignments", { token }),
+      ]);
+
+      setSubjects(subjectRes.subjects || []);
+      setAssignments(assignmentRes.assignments || []);
+
+      const assignmentRows = assignmentRes.assignments || [];
+      const map = new Map();
+      for (const a of assignmentRows) {
+        const batches = a.batch ? [a.batch] : ["ELEVEN", "TWELVE"];
+        let combos = [];
+        if (a.subject?.faculty === "SCIENCE") combos = [["SCIENCE", "BIO"], ["SCIENCE", "CS"]];
+        else if (a.subject?.faculty === "MANAGEMENT") combos = [["MANAGEMENT", "ECONOMICS"], ["MANAGEMENT", "MARKETING"]];
+        else combos = [["SCIENCE", "BIO"], ["SCIENCE", "CS"], ["MANAGEMENT", "ECONOMICS"], ["MANAGEMENT", "MARKETING"]];
+        for (const batch of batches) {
+          for (const [faculty, section] of combos) {
+            const key = `${batch}|${faculty}|${section}`;
+            map.set(key, { batch, faculty, section });
+          }
+        }
+      }
+
+      const allowedNow = [...map.values()];
+      if (allowedNow.length === 0) {
+        setStudents([]);
+        setAnalytics(null);
+        return;
+      }
+
+      const requestedKey = `${filters.batch}|${filters.faculty}|${filters.section}`;
+      const chosen = map.get(requestedKey) || allowedNow[0];
+      if (chosen.batch !== filters.batch || chosen.faculty !== filters.faculty || chosen.section !== filters.section) {
+        setClassFilters(chosen);
+      }
+
+      const query = buildClassQuery(chosen);
+      const subjectQuery = selectedSubjectId ? `${query ? `${query}&` : "?"}subjectId=${selectedSubjectId}` : query;
+      const [studentRes, analyticsRes] = await Promise.all([
+        api(`/api/students${subjectQuery}`, { token }),
+        api(`/api/analytics/teacher/${user.id}${query}`, { token }),
       ]);
       setStudents(studentRes.students || []);
       setAnalytics(analyticsRes || null);
-      setSubjects(subjectRes.subjects || []);
     } catch (e) {
       setError(e.message || "Failed to load students.");
     } finally {
@@ -80,8 +173,28 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   }, [token, user?.role, user?.id]);
 
   useEffect(() => {
+    if (allowedClassOptions.length === 0) return;
+    const exists = allowedClassOptions.some((opt) => `${opt.batch}|${opt.faculty}|${opt.section}` === classKey);
+    if (!exists) {
+      const first = allowedClassOptions[0];
+      setClassFilters({ batch: first.batch, faculty: first.faculty, section: first.section });
+    }
+  }, [allowedClassOptions.length, classKey]);
+
+  useEffect(() => {
     loadStudents(classFilters);
-  }, [classFilters.batch, classFilters.faculty, classFilters.section]);
+  }, [classFilters.batch, classFilters.faculty, classFilters.section, selectedSubjectId]);
+
+  useEffect(() => {
+    if (allowedSubjectOptions.length === 0) {
+      setSelectedSubjectId("");
+      return;
+    }
+    const exists = allowedSubjectOptions.some((s) => String(s.id) === String(selectedSubjectId));
+    if (!exists) {
+      setSelectedSubjectId(String(allowedSubjectOptions[0].id));
+    }
+  }, [allowedSubjectOptions.length, classFilters.batch, classFilters.faculty]);
 
   useEffect(() => {
     if (students.length === 0) return;
@@ -242,9 +355,17 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
         {tab === "attendance" ? (
           <AttendanceSection
             students={students}
-            subjects={subjects}
+            subjects={allowedSubjectOptions}
+            classOptions={allowedClassOptions}
             classFilters={classFilters}
-            onFilterChange={(field, value) => setClassFilters((prev) => ({ ...prev, [field]: value }))}
+            onFilterChange={(field, value) => {
+              if (field === "classKey") {
+                const [batch, faculty, section] = value.split("|");
+                setClassFilters({ batch, faculty, section });
+                return;
+              }
+              setClassFilters((prev) => ({ ...prev, [field]: value }));
+            }}
             selectedSubjectId={selectedSubjectId}
             onSubjectChange={setSelectedSubjectId}
             attendanceDate={attendanceDate}

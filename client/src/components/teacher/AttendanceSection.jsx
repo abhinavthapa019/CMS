@@ -1,6 +1,7 @@
 export default function AttendanceSection({
   students,
   subjects,
+  classOptions,
   classFilters,
   onFilterChange,
   selectedSubjectId,
@@ -14,6 +15,7 @@ export default function AttendanceSection({
   submitting,
 }) {
   const allPresent = students.length > 0 && students.every((s) => attendanceMap[s.id] === true);
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <section className="bg-surface-container-lowest rounded-2xl p-5 border border-outline-variant/20 space-y-4">
@@ -25,40 +27,17 @@ export default function AttendanceSection({
 
         <div className="flex flex-wrap items-end gap-3">
           <label className="block space-y-1">
-            <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Batch</span>
+            <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Class</span>
             <select
               className="rounded-lg bg-surface-container-highest border-none"
-              value={classFilters.batch}
-              onChange={(e) => onFilterChange("batch", e.target.value)}
+              value={`${classFilters.batch}|${classFilters.faculty}|${classFilters.section}`}
+              onChange={(e) => onFilterChange("classKey", e.target.value)}
             >
-              <option value="ELEVEN">ELEVEN</option>
-              <option value="TWELVE">TWELVE</option>
-            </select>
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Faculty</span>
-            <select
-              className="rounded-lg bg-surface-container-highest border-none"
-              value={classFilters.faculty}
-              onChange={(e) => onFilterChange("faculty", e.target.value)}
-            >
-              <option value="SCIENCE">SCIENCE</option>
-              <option value="MANAGEMENT">MANAGEMENT</option>
-            </select>
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Section</span>
-            <select
-              className="rounded-lg bg-surface-container-highest border-none"
-              value={classFilters.section}
-              onChange={(e) => onFilterChange("section", e.target.value)}
-            >
-              <option value="BIO">BIO</option>
-              <option value="CS">CS</option>
-              <option value="ECONOMICS">ECONOMICS</option>
-              <option value="MARKETING">MARKETING</option>
+              {classOptions.map((opt) => (
+                <option key={opt.label} value={`${opt.batch}|${opt.faculty}|${opt.section}`}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -85,6 +64,7 @@ export default function AttendanceSection({
               type="date"
               className="rounded-lg bg-surface-container-highest border-none"
               value={attendanceDate}
+              max={today}
               onChange={(e) => onDateChange(e.target.value)}
             />
           </label>

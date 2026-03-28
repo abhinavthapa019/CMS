@@ -1,5 +1,14 @@
-export default function AttendanceSummarySection({ loading, summary }) {
-  const atRisk = summary.filter((s) => s.attendancePercent < 40);
+export default function AttendanceSummarySection({ loading, summary, subjects, filter, onFilterChange }) {
+  const visibleSummary = filter.subjectId ? summary.filter((s) => s.totalCount > 0) : summary;
+  const atRisk = visibleSummary.filter((s) => s.attendancePercent < 40);
+
+  const displayBatch = (batch) => (batch === "ELEVEN" ? "11" : batch === "TWELVE" ? "12" : batch);
+
+  const filteredSubjects = subjects.filter((subject) => {
+    if (filter.department === "BOTH") return true;
+    if (filter.department === "COMMON") return !subject.faculty;
+    return subject.faculty === filter.department;
+  });
 
   return (
     <section className="grid lg:grid-cols-5 gap-4">
@@ -7,6 +16,66 @@ export default function AttendanceSummarySection({ loading, summary }) {
         <div className="flex items-center justify-between">
           <h3 className="font-headline text-xl font-bold text-primary">Student Attendance Summary</h3>
           <span className="text-xs uppercase tracking-wider font-semibold text-secondary">All Dates</span>
+        </div>
+
+        <p className="text-xs text-secondary">
+          Showing {visibleSummary.length} students for class {displayBatch(filter.batch)} / {filter.faculty} / {filter.section}
+        </p>
+
+        <div className="grid sm:grid-cols-5 gap-2">
+          <select
+            className="rounded-lg bg-surface-container-highest border-none"
+            value={filter.batch}
+            onChange={(e) => onFilterChange("batch", e.target.value)}
+          >
+            <option value="ELEVEN">11</option>
+            <option value="TWELVE">12</option>
+          </select>
+          <select
+            className="rounded-lg bg-surface-container-highest border-none"
+            value={filter.faculty}
+            onChange={(e) => onFilterChange("faculty", e.target.value)}
+          >
+            <option value="SCIENCE">SCIENCE</option>
+            <option value="MANAGEMENT">MANAGEMENT</option>
+          </select>
+          <select
+            className="rounded-lg bg-surface-container-highest border-none"
+            value={filter.section}
+            onChange={(e) => onFilterChange("section", e.target.value)}
+          >
+            {filter.faculty === "SCIENCE" ? (
+              <>
+                <option value="BIO">BIO</option>
+                <option value="CS">CS</option>
+              </>
+            ) : (
+              <>
+                <option value="ECONOMICS">ECONOMICS</option>
+                <option value="MARKETING">MARKETING</option>
+              </>
+            )}
+          </select>
+          <select
+            className="rounded-lg bg-surface-container-highest border-none"
+            value={filter.subjectId}
+            onChange={(e) => onFilterChange("subjectId", e.target.value)}
+          >
+            <option value="">All Subjects</option>
+            {filteredSubjects.map((subject) => (
+              <option key={subject.id} value={subject.id}>{subject.name}</option>
+            ))}
+          </select>
+          <select
+            className="rounded-lg bg-surface-container-highest border-none"
+            value={filter.department}
+            onChange={(e) => onFilterChange("department", e.target.value)}
+          >
+            <option value="SCIENCE">SCIENCE</option>
+            <option value="MANAGEMENT">MANAGEMENT</option>
+            <option value="COMMON">COMMON</option>
+            <option value="BOTH">BOTH</option>
+          </select>
         </div>
 
         {loading ? (
@@ -23,7 +92,7 @@ export default function AttendanceSummarySection({ loading, summary }) {
               </tr>
             </thead>
             <tbody>
-              {summary.map((item) => (
+              {visibleSummary.map((item) => (
                 <tr key={item.studentId} className="border-b border-outline-variant/10">
                   <td className="py-2 font-medium">{item.name}</td>
                   <td className="py-2 text-secondary">{item.rollNumber}</td>
@@ -36,7 +105,7 @@ export default function AttendanceSummarySection({ loading, summary }) {
                   </td>
                 </tr>
               ))}
-              {summary.length === 0 ? (
+              {visibleSummary.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-3 text-secondary">No students/attendance records yet.</td>
                 </tr>
@@ -59,7 +128,7 @@ export default function AttendanceSummarySection({ loading, summary }) {
             {atRisk.map((item) => (
               <div key={item.studentId} className="p-3 rounded-lg bg-error-container/60 border border-error/20">
                 <p className="font-medium text-on-surface">{item.name}</p>
-                <p className="text-xs text-secondary">Roll: {item.rollNumber}</p>
+                <p className="text-xs text-secondary">{displayBatch(item.batch)} / {item.section}</p>
                 <p className="text-sm font-semibold text-error">{item.attendancePercent}%</p>
               </div>
             ))}

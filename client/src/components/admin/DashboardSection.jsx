@@ -18,7 +18,8 @@ import {
 const PIE_COLORS = ["#15803d", "#b91c1c"];
 
 function prettyClass(item) {
-  return `${item.batch}-${item.faculty}-${item.section}`;
+  const batch = item.batch === "ELEVEN" ? "11" : item.batch === "TWELVE" ? "12" : item.batch;
+  return `${batch}-${item.faculty}-${item.section}`;
 }
 
 export default function DashboardSection({ users, students, analytics, loading, onGoStudents, onGoTeachers }) {

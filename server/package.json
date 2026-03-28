@@ -9,7 +9,8 @@
     "postinstall": "prisma generate",
     "seed:teachers": "node seed-teachers.js",
     "seed:students": "node seed-students.js",
-    "seed:subjects": "node seed-subjects.js"
+    "seed:subjects": "node seed-subjects.js",
+    "seed:attendance:march": "node seed-attendance-march.js"
   },
   "keywords": [],
   "author": "",
