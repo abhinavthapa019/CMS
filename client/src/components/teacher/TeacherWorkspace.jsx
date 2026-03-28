@@ -14,6 +14,8 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   const [notice, setNotice] = useState("");
 
   const [students, setStudents] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [actionLog, setActionLog] = useState([]);
   const [attendanceCount, setAttendanceCount] = useState(0);
   const [predictionCount, setPredictionCount] = useState(0);
@@ -24,6 +26,12 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
   const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [attendanceMap, setAttendanceMap] = useState({});
+  const [selectedSubjectId, setSelectedSubjectId] = useState("");
+  const [classFilters, setClassFilters] = useState({
+    batch: "ELEVEN",
+    faculty: "SCIENCE",
+    section: "BIO",
+  });
 
   const [marksForm, setMarksForm] = useState({
     studentId: "",
@@ -36,14 +44,30 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   const [predictionStudentId, setPredictionStudentId] = useState("");
   const [predictionResult, setPredictionResult] = useState(null);
 
-  async function loadStudents() {
+  function buildClassQuery(filters) {
+    const q = new URLSearchParams();
+    if (filters.batch) q.set("batch", filters.batch);
+    if (filters.faculty) q.set("faculty", filters.faculty);
+    if (filters.section) q.set("section", filters.section);
+    const query = q.toString();
+    return query ? `?${query}` : "";
+  }
+
+  async function loadStudents(filters = classFilters) {
     if (!token || user?.role !== "TEACHER") return;
 
     setLoading(true);
     setError("");
     try {
-      const res = await api("/api/students", { token });
-      setStudents(res.students || []);
+      const query = buildClassQuery(filters);
+      const [studentRes, analyticsRes, subjectRes] = await Promise.all([
+        api(`/api/students${query}`, { token }),
+        api(`/api/analytics/teacher/${user.id}${query}`, { token }),
+        api("/api/subjects", { token }),
+      ]);
+      setStudents(studentRes.students || []);
+      setAnalytics(analyticsRes || null);
+      setSubjects(subjectRes.subjects || []);
     } catch (e) {
       setError(e.message || "Failed to load students.");
     } finally {
@@ -53,7 +77,11 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
   useEffect(() => {
     loadStudents();
-  }, [token, user?.role]);
+  }, [token, user?.role, user?.id]);
+
+  useEffect(() => {
+    loadStudents(classFilters);
+  }, [classFilters.batch, classFilters.faculty, classFilters.section]);
 
   useEffect(() => {
     if (students.length === 0) return;
@@ -90,6 +118,10 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
             body: {
               present: attendanceMap[s.id] ?? true,
               date: isoDate,
+              batch: classFilters.batch || undefined,
+              faculty: classFilters.faculty || undefined,
+              section: classFilters.section || undefined,
+              subjectId: selectedSubjectId ? Number(selectedSubjectId) : undefined,
             },
           })
         )
@@ -109,6 +141,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
       }
 
       logAction("attendance", "Class attendance submitted", `${attendanceDate} - ${successCount} saved`);
+      await loadStudents(classFilters);
     } catch (e) {
       setError(e.message || "Failed to record attendance.");
     } finally {
@@ -175,6 +208,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
         "Final grade predicted",
         `${student?.firstName || "Student"} ${student?.lastName || ""}`.trim()
       );
+      await loadStudents(classFilters);
     } catch (e) {
       setError(e.message || "Prediction failed.");
     } finally {
@@ -203,11 +237,16 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
         {loading ? <p className="text-sm text-secondary">Loading students...</p> : null}
 
-        {tab === "dashboard" ? <TeacherDashboardSection students={students} actions={actionSummary} /> : null}
+        {tab === "dashboard" ? <TeacherDashboardSection students={students} actions={actionSummary} analytics={analytics} /> : null}
 
         {tab === "attendance" ? (
           <AttendanceSection
             students={students}
+            subjects={subjects}
+            classFilters={classFilters}
+            onFilterChange={(field, value) => setClassFilters((prev) => ({ ...prev, [field]: value }))}
+            selectedSubjectId={selectedSubjectId}
+            onSubjectChange={setSelectedSubjectId}
             attendanceDate={attendanceDate}
             attendanceMap={attendanceMap}
             onDateChange={setAttendanceDate}

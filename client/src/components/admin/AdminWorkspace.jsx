@@ -19,7 +19,9 @@ export default function AdminWorkspace({ user, token, onLogout }) {
 
   const [users, setUsers] = useState([]);
   const [students, setStudents] = useState([]);
+  const [classFilter, setClassFilter] = useState({ batch: "", faculty: "", section: "" });
   const [attendanceSummary, setAttendanceSummary] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [teacherSearch, setTeacherSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
 
@@ -34,6 +36,9 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     firstName: "",
     lastName: "",
     rollNumber: "",
+    batch: "ELEVEN",
+    faculty: "SCIENCE",
+    section: "BIO",
     motherJob: "teacher",
     fatherJob: "teacher",
     travelTime: 1,
@@ -45,14 +50,14 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     setLoading(true);
     setError("");
     try {
-      const [usersRes, studentsRes, attendanceRes] = await Promise.all([
+      const [usersRes, attendanceRes, analyticsRes] = await Promise.all([
         api("/api/users", { token }),
-        api("/api/students", { token }),
         api("/api/students/attendance-summary", { token }),
+        api("/api/analytics/admin/overview", { token }),
       ]);
       setUsers(usersRes.users || []);
-      setStudents(studentsRes.students || []);
       setAttendanceSummary(attendanceRes.summary || []);
+      setAnalytics(analyticsRes);
     } catch (e) {
       setError(e.message || "Failed to load admin data");
     } finally {
@@ -63,6 +68,19 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   useEffect(() => {
     loadAdminData();
   }, [token, user?.role]);
+
+  useEffect(() => {
+    if (!token || user?.role !== "ADMIN") return;
+    if (!classFilter.batch || !classFilter.faculty || !classFilter.section) {
+      setStudents([]);
+      return;
+    }
+
+    const q = new URLSearchParams(classFilter).toString();
+    api(`/api/students?${q}`, { token })
+      .then((res) => setStudents(res.students || []))
+      .catch((e) => setError(e.message || "Failed to load class students"));
+  }, [token, user?.role, classFilter.batch, classFilter.faculty, classFilter.section]);
 
   const filteredUsers = useMemo(() => {
     const q = teacherSearch.trim().toLowerCase();
@@ -117,6 +135,9 @@ export default function AdminWorkspace({ user, token, onLogout }) {
         firstName: "",
         lastName: "",
         rollNumber: "",
+        batch: "ELEVEN",
+        faculty: "SCIENCE",
+        section: "BIO",
         motherJob: "teacher",
         fatherJob: "teacher",
         travelTime: 1,
@@ -186,6 +207,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
           <DashboardSection
             users={users}
             students={students}
+            analytics={analytics}
             loading={loading}
             onGoStudents={() => setTab("students")}
             onGoTeachers={() => setTab("teachers")}
@@ -211,6 +233,8 @@ export default function AdminWorkspace({ user, token, onLogout }) {
           <StudentsSection
             loading={loading}
             students={filteredStudents}
+            classFilter={classFilter}
+            onClassFilterChange={(field, value) => setClassFilter((prev) => ({ ...prev, [field]: value }))}
             search={studentSearch}
             onSearchChange={setStudentSearch}
             studentForm={studentForm}

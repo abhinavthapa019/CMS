@@ -19,6 +19,23 @@ enum Job {
   other
 }
 
+enum AcademicBatch {
+  ELEVEN
+  TWELVE
+}
+
+enum Faculty {
+  SCIENCE
+  MANAGEMENT
+}
+
+enum Section {
+  BIO
+  CS
+  ECONOMICS
+  MARKETING
+}
+
 model User {
   id        Int       @id @default(autoincrement())
   name      String
@@ -30,13 +47,17 @@ model User {
 
   attendance Attendance[]
   marks      Mark[]
+  subjectAssignments TeacherSubjectAssignment[]
 }
 
 model Student {
   id         Int       @id @default(autoincrement())
   firstName  String
   lastName   String
-  rollNumber String    @unique
+  rollNumber String
+  batch      AcademicBatch
+  faculty    Faculty
+  section    Section
   motherJob  Job
   fatherJob  Job
   travelTime Int
@@ -46,6 +67,39 @@ model Student {
   attendance Attendance[]
   marks      Mark[]
   predictions Prediction[]
+
+  @@index([batch, faculty, section])
+  @@unique([batch, faculty, section, rollNumber])
+}
+
+model Subject {
+  id             Int      @id @default(autoincrement())
+  name           String
+  faculty        Faculty?
+  isOptional     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  assignments    TeacherSubjectAssignment[]
+  attendanceRows Attendance[]
+
+  @@unique([name, faculty])
+  @@index([faculty])
+}
+
+model TeacherSubjectAssignment {
+  id        Int            @id @default(autoincrement())
+  teacherId Int
+  subjectId Int
+  batch     AcademicBatch?
+  createdAt DateTime       @default(now())
+
+  teacher   User           @relation(fields: [teacherId], references: [id])
+  subject   Subject        @relation(fields: [subjectId], references: [id])
+
+  @@unique([teacherId, subjectId, batch])
+  @@index([teacherId])
+  @@index([subjectId])
 }
 
 model Attendance {
@@ -60,8 +114,13 @@ model Attendance {
   teacher   User     @relation(fields: [teacherId], references: [id])
   teacherId Int
 
+  subject   Subject? @relation(fields: [subjectId], references: [id])
+  subjectId Int?
+
   @@unique([studentId, date])
   @@index([teacherId])
+  @@index([date])
+  @@index([subjectId])
 }
 
 model Mark {

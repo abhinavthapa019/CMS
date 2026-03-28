@@ -1,13 +1,44 @@
 import StatCard from "./StatCard";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
-export default function DashboardSection({ users, students, loading, onGoStudents, onGoTeachers }) {
+const PIE_COLORS = ["#15803d", "#b91c1c"];
+
+function prettyClass(item) {
+  return `${item.batch}-${item.faculty}-${item.section}`;
+}
+
+export default function DashboardSection({ users, students, analytics, loading, onGoStudents, onGoTeachers }) {
+  const kpis = analytics?.kpis || {
+    totalStudents: students.length,
+    attendancePercent: 0,
+    dailyPresentCount: 0,
+  };
+
+  const classDaily = analytics?.classWiseDaily || [];
+  const trend = analytics?.trend || [];
+  const distribution = analytics?.distribution || [];
+
   return (
     <>
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon="school" label="Total Students" value={students.length} tone="primary" />
+        <StatCard icon="school" label="Total Students" value={kpis.totalStudents} tone="primary" />
+        <StatCard icon="fact_check" label="Attendance %" value={`${kpis.attendancePercent}%`} tone="secondary" />
+        <StatCard icon="today" label="Daily Present" value={kpis.dailyPresentCount} tone="tertiary" />
         <StatCard icon="group" label="Total Faculty" value={users.filter((u) => u.role === "TEACHER").length} tone="secondary" />
-        <StatCard icon="shield_person" label="Admins" value={users.filter((u) => u.role === "ADMIN").length} tone="tertiary" />
-        <StatCard icon="analytics" label="Pending Reports" value="14" tone="error" />
       </section>
 
       <section className="grid md:grid-cols-2 gap-4">
@@ -31,6 +62,59 @@ export default function DashboardSection({ users, students, loading, onGoStudent
           </span>
           <span className="material-symbols-outlined">chevron_right</span>
         </button>
+      </section>
+
+      <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2 bg-surface-container-lowest rounded-2xl p-5 shadow-sm border border-outline-variant/10">
+          <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Global Daily Attendance Trend</h3>
+          <div className="w-full h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="present" stroke="#2563eb" strokeWidth={2} />
+                <Line type="monotone" dataKey="absent" stroke="#dc2626" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm border border-outline-variant/10">
+          <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Present vs Absent</h3>
+          <div className="w-full h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={distribution} dataKey="value" nameKey="name" outerRadius={90} label>
+                  {distribution.map((entry, index) => (
+                    <Cell key={`${entry.name}-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm border border-outline-variant/10">
+        <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Class-wise Daily Attendance</h3>
+        <div className="w-full h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={classDaily.map((item) => ({ ...item, classLabel: prettyClass(item) }))}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="classLabel" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="presentToday" fill="#2563eb" name="Present Today" />
+              <Bar dataKey="totalStudents" fill="#94a3b8" name="Total Students" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </section>
 
       <section className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/10 space-y-4">

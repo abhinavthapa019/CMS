@@ -1,0 +1,276 @@
+const { Router } = require("express");
+const { AcademicBatch, Faculty, Role, Section } = require("@prisma/client");
+const { prisma } = require("../lib/prisma");
+const { requireAuth } = require("../middlewares/auth");
+
+const router = Router();
+
+function toDateKey(date) {
+  return new Date(date).toISOString().slice(0, 10);
+}
+
+function classKey(student) {
+  return `${student.batch}-${student.faculty}-${student.section}`;
+}
+
+function withPercent(present, total) {
+  if (!total) return 0;
+  return Math.round((present / total) * 100);
+}
+
+function buildClassSummary(students, attendanceRows, onlyToday = false) {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const map = new Map();
+  const studentById = new Map(students.map((s) => [s.id, s]));
+
+  for (const student of students) {
+    const key = classKey(student);
+    if (!map.has(key)) {
+      map.set(key, {
+        classKey: key,
+        batch: student.batch,
+        faculty: student.faculty,
+        section: student.section,
+        totalStudents: 0,
+        presentToday: 0,
+        totalPresent: 0,
+        totalRows: 0,
+      });
+    }
+    map.get(key).totalStudents += 1;
+  }
+
+  for (const row of attendanceRows) {
+    const student = studentById.get(row.studentId);
+    if (!student) continue;
+
+    const key = classKey(student);
+    const item = map.get(key);
+    const dateKey = toDateKey(row.date);
+
+    if (onlyToday) {
+      if (dateKey === todayKey && row.present) item.presentToday += 1;
+      continue;
+    }
+
+    item.totalRows += 1;
+    if (row.present) item.totalPresent += 1;
+    if (dateKey === todayKey && row.present) item.presentToday += 1;
+  }
+
+  return [...map.values()].map((item) => ({
+    ...item,
+    attendancePercent: withPercent(item.totalPresent, item.totalRows),
+  }));
+}
+
+function buildTrend(attendanceRows) {
+  const byDate = new Map();
+
+  for (const row of attendanceRows) {
+    const d = toDateKey(row.date);
+    const prev = byDate.get(d) || { date: d, present: 0, absent: 0, total: 0 };
+    prev.total += 1;
+    if (row.present) prev.present += 1;
+    else prev.absent += 1;
+    byDate.set(d, prev);
+  }
+
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+router.get(["/api/analytics/teacher/:teacherId", "/analytics/teacher/:teacherId"], requireAuth(), async (req, res) => {
+  const teacherId = Number(req.params.teacherId);
+  if (!Number.isInteger(teacherId)) {
+    return res.status(400).json({ ok: false, error: "Invalid teacherId" });
+  }
+
+  if (req.user.role === Role.TEACHER && req.user.userId !== teacherId) {
+    return res.status(403).json({ ok: false, error: "Forbidden" });
+  }
+
+  const validBatch = req.query.batch ? Object.values(AcademicBatch).includes(req.query.batch) : true;
+  const validFaculty = req.query.faculty ? Object.values(Faculty).includes(req.query.faculty) : true;
+  const validSection = req.query.section ? Object.values(Section).includes(req.query.section) : true;
+  if (!validBatch || !validFaculty || !validSection) {
+    return res.status(400).json({ ok: false, error: "Invalid class filter values" });
+  }
+
+  const whereStudent = {};
+  if (req.query.batch) whereStudent.batch = req.query.batch;
+  if (req.query.faculty) whereStudent.faculty = req.query.faculty;
+  if (req.query.section) whereStudent.section = req.query.section;
+
+  const students = await prisma.student.findMany({
+    where: whereStudent,
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      rollNumber: true,
+      batch: true,
+      faculty: true,
+      section: true,
+    },
+    orderBy: [{ batch: "asc" }, { faculty: "asc" }, { section: "asc" }, { rollNumber: "asc" }],
+  });
+
+  const studentIdSet = new Set(students.map((s) => s.id));
+
+  const attendanceRows = await prisma.attendance.findMany({
+    where: {
+      teacherId,
+      ...(students.length ? { studentId: { in: [...studentIdSet] } } : { studentId: -1 }),
+    },
+    select: {
+      studentId: true,
+      present: true,
+      date: true,
+    },
+    orderBy: { date: "asc" },
+  });
+
+  const [totalsByStudent, presentByStudent, presentToday] = await Promise.all([
+    prisma.attendance.groupBy({
+      by: ["studentId"],
+      where: {
+        teacherId,
+        ...(students.length ? { studentId: { in: [...studentIdSet] } } : { studentId: -1 }),
+      },
+      _count: { _all: true },
+    }),
+    prisma.attendance.groupBy({
+      by: ["studentId"],
+      where: {
+        teacherId,
+        present: true,
+        ...(students.length ? { studentId: { in: [...studentIdSet] } } : { studentId: -1 }),
+      },
+      _count: { _all: true },
+    }),
+    prisma.attendance.count({
+      where: {
+        teacherId,
+        present: true,
+        date: {
+          gte: new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`),
+          lt: new Date(`${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`),
+        },
+        ...(students.length ? { studentId: { in: [...studentIdSet] } } : { studentId: -1 }),
+      },
+    }),
+  ]);
+
+  const totalMap = new Map(totalsByStudent.map((row) => [row.studentId, row._count._all]));
+  const presentMap = new Map(presentByStudent.map((row) => [row.studentId, row._count._all]));
+
+  const totalRows = totalsByStudent.reduce((acc, row) => acc + row._count._all, 0);
+  const totalPresent = presentByStudent.reduce((acc, row) => acc + row._count._all, 0);
+
+  const studentPercentages = students.map((student) => {
+    const total = totalMap.get(student.id) || 0;
+    const present = presentMap.get(student.id) || 0;
+    const attendancePercent = withPercent(present, total);
+    return {
+      studentId: student.id,
+      name: `${student.firstName} ${student.lastName}`,
+      rollNumber: student.rollNumber,
+      batch: student.batch,
+      faculty: student.faculty,
+      section: student.section,
+      presentCount: present,
+      totalCount: total,
+      attendancePercent,
+      lowAttendance: attendancePercent < 75,
+    };
+  });
+
+  const trend = buildTrend(attendanceRows);
+
+  return res.json({
+    ok: true,
+    kpis: {
+      trackedStudents: students.length,
+      attendancePercent: withPercent(totalPresent, totalRows),
+      dailyPresentCount: presentToday,
+    },
+    classOverview: {
+      averageAttendancePercent: withPercent(totalPresent, totalRows),
+      totalPresent,
+      totalAbsent: Math.max(totalRows - totalPresent, 0),
+    },
+    distribution: [
+      { name: "Present", value: totalPresent },
+      { name: "Absent", value: Math.max(totalRows - totalPresent, 0) },
+    ],
+    trend,
+    studentPercentages,
+    lowAttendance: studentPercentages.filter((s) => s.lowAttendance),
+  });
+});
+
+router.get(["/api/analytics/admin/overview", "/analytics/admin/overview"], requireAuth(Role.ADMIN), async (req, res) => {
+  const students = await prisma.student.findMany({
+    select: {
+      id: true,
+      batch: true,
+      faculty: true,
+      section: true,
+    },
+    orderBy: [{ batch: "asc" }, { faculty: "asc" }, { section: "asc" }, { id: "asc" }],
+  });
+
+  const attendanceRows = await prisma.attendance.findMany({
+    select: {
+      studentId: true,
+      present: true,
+      date: true,
+    },
+    orderBy: { date: "asc" },
+  });
+
+  const [totals, totalPresent, todayPresent] = await Promise.all([
+    prisma.attendance.aggregate({ _count: { _all: true } }),
+    prisma.attendance.count({ where: { present: true } }),
+    prisma.attendance.count({
+      where: {
+        present: true,
+        date: {
+          gte: new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`),
+          lt: new Date(`${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`),
+        },
+      },
+    }),
+  ]);
+
+  const totalRows = totals._count._all;
+
+  const classWise = buildClassSummary(students, attendanceRows);
+  const dailyClassView = buildClassSummary(students, attendanceRows, true);
+  const trend = buildTrend(attendanceRows);
+
+  return res.json({
+    ok: true,
+    kpis: {
+      totalStudents: students.length,
+      attendancePercent: withPercent(totalPresent, totalRows),
+      dailyPresentCount: todayPresent,
+    },
+    classWise,
+    classWiseDaily: dailyClassView.map((item) => ({
+      classKey: item.classKey,
+      batch: item.batch,
+      faculty: item.faculty,
+      section: item.section,
+      totalStudents: item.totalStudents,
+      presentToday: item.presentToday,
+    })),
+    trend,
+    distribution: [
+      { name: "Present", value: totalPresent },
+      { name: "Absent", value: Math.max(totalRows - totalPresent, 0) },
+    ],
+  });
+});
+
+module.exports = router;

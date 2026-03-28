@@ -1,6 +1,6 @@
 const { Router } = require("express");
 const { z } = require("zod");
-const { Job, Role } = require("@prisma/client");
+const { AcademicBatch, Faculty, Job, Role, Section } = require("@prisma/client");
 const { prisma } = require("../lib/prisma");
 const { requireAuth } = require("../middlewares/auth");
 const { validate } = require("../middlewares/validate");
@@ -12,6 +12,9 @@ const createStudentSchema = z.object({
     firstName: z.string().min(1),
     lastName: z.string().min(1),
     rollNumber: z.string().min(1),
+    batch: z.nativeEnum(AcademicBatch),
+    faculty: z.nativeEnum(Faculty),
+    section: z.nativeEnum(Section),
     motherJob: z.nativeEnum(Job),
     fatherJob: z.nativeEnum(Job),
     travelTime: z.number().int().min(0).max(10),
@@ -25,7 +28,7 @@ router.post("/api/students", requireAuth(Role.ADMIN), validate(createStudentSche
     return res.status(201).json({ ok: true, student });
   } catch (err) {
     if (err.code === "P2002") {
-      return res.status(409).json({ ok: false, error: "rollNumber already exists" });
+      return res.status(409).json({ ok: false, error: "rollNumber already exists in this class" });
     }
     return res.status(500).json({ ok: false, error: "Failed to create student" });
   }
@@ -35,7 +38,23 @@ router.get("/api/students", requireAuth(), async (req, res) => {
   if (req.user.role !== Role.ADMIN && req.user.role !== Role.TEACHER) {
     return res.status(403).json({ ok: false, error: "Forbidden" });
   }
-  const students = await prisma.student.findMany();
+
+  const validBatch = req.query.batch ? Object.values(AcademicBatch).includes(req.query.batch) : true;
+  const validFaculty = req.query.faculty ? Object.values(Faculty).includes(req.query.faculty) : true;
+  const validSection = req.query.section ? Object.values(Section).includes(req.query.section) : true;
+  if (!validBatch || !validFaculty || !validSection) {
+    return res.status(400).json({ ok: false, error: "Invalid class filter values" });
+  }
+
+  const where = {};
+  if (req.query.batch) where.batch = req.query.batch;
+  if (req.query.faculty) where.faculty = req.query.faculty;
+  if (req.query.section) where.section = req.query.section;
+
+  const students = await prisma.student.findMany({
+    where,
+    orderBy: [{ batch: "asc" }, { faculty: "asc" }, { section: "asc" }, { rollNumber: "asc" }],
+  });
   return res.json({ ok: true, students });
 });
 
@@ -46,8 +65,11 @@ router.get("/api/students/attendance-summary", requireAuth(Role.ADMIN), async (r
       firstName: true,
       lastName: true,
       rollNumber: true,
+      batch: true,
+      faculty: true,
+      section: true,
     },
-    orderBy: { id: "asc" },
+    orderBy: [{ batch: "asc" }, { faculty: "asc" }, { section: "asc" }, { id: "asc" }],
   });
 
   const attendance = await prisma.attendance.findMany({
@@ -76,6 +98,9 @@ router.get("/api/students/attendance-summary", requireAuth(Role.ADMIN), async (r
       studentId: student.id,
       name: `${student.firstName} ${student.lastName}`,
       rollNumber: student.rollNumber,
+      batch: student.batch,
+      faculty: student.faculty,
+      section: student.section,
       presentCount: stats.present,
       totalCount: stats.total,
       attendancePercent: percentage,
@@ -122,6 +147,10 @@ const attendanceSchema = z.object({
   body: z.object({
     present: z.boolean().optional().default(true),
     date: z.string().datetime().optional(),
+    batch: z.nativeEnum(AcademicBatch).optional(),
+    faculty: z.nativeEnum(Faculty).optional(),
+    section: z.nativeEnum(Section).optional(),
+    subjectId: z.number().int().positive().optional(),
   }),
 });
 
@@ -130,7 +159,24 @@ router.post("/api/students/:id/attendance", requireAuth(), validate(attendanceSc
     return res.status(403).json({ ok: false, error: "Forbidden" });
   }
   const studentId = Number(req.params.id);
-  const { present, date } = req.validated.body;
+  const { present, date, batch, faculty, section, subjectId } = req.validated.body;
+
+  const student = await prisma.student.findUnique({ where: { id: studentId } });
+  if (!student) {
+    return res.status(404).json({ ok: false, error: "Student not found" });
+  }
+
+  if ((batch && student.batch !== batch) || (faculty && student.faculty !== faculty) || (section && student.section !== section)) {
+    return res.status(400).json({ ok: false, error: "Student does not belong to the selected class" });
+  }
+
+  if (subjectId) {
+    const subjectExists = await prisma.subject.findUnique({ where: { id: subjectId } });
+    if (!subjectExists) {
+      return res.status(404).json({ ok: false, error: "Subject not found" });
+    }
+  }
+
   try {
     const attendance = await prisma.attendance.create({
       data: {
@@ -138,6 +184,7 @@ router.post("/api/students/:id/attendance", requireAuth(), validate(attendanceSc
         teacherId: req.user.userId,
         present,
         date: date ? new Date(date) : new Date(),
+        subjectId: subjectId || null,
       },
     });
     return res.status(201).json({ ok: true, attendance });

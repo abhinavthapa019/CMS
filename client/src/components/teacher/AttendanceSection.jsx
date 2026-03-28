@@ -1,5 +1,10 @@
 export default function AttendanceSection({
   students,
+  subjects,
+  classFilters,
+  onFilterChange,
+  selectedSubjectId,
+  onSubjectChange,
   attendanceDate,
   attendanceMap,
   onDateChange,
@@ -19,6 +24,60 @@ export default function AttendanceSection({
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
+          <label className="block space-y-1">
+            <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Batch</span>
+            <select
+              className="rounded-lg bg-surface-container-highest border-none"
+              value={classFilters.batch}
+              onChange={(e) => onFilterChange("batch", e.target.value)}
+            >
+              <option value="ELEVEN">ELEVEN</option>
+              <option value="TWELVE">TWELVE</option>
+            </select>
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Faculty</span>
+            <select
+              className="rounded-lg bg-surface-container-highest border-none"
+              value={classFilters.faculty}
+              onChange={(e) => onFilterChange("faculty", e.target.value)}
+            >
+              <option value="SCIENCE">SCIENCE</option>
+              <option value="MANAGEMENT">MANAGEMENT</option>
+            </select>
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Section</span>
+            <select
+              className="rounded-lg bg-surface-container-highest border-none"
+              value={classFilters.section}
+              onChange={(e) => onFilterChange("section", e.target.value)}
+            >
+              <option value="BIO">BIO</option>
+              <option value="CS">CS</option>
+              <option value="ECONOMICS">ECONOMICS</option>
+              <option value="MARKETING">MARKETING</option>
+            </select>
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Subject (Optional)</span>
+            <select
+              className="rounded-lg bg-surface-container-highest border-none"
+              value={selectedSubjectId}
+              onChange={(e) => onSubjectChange(e.target.value)}
+            >
+              <option value="">None</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.name}{subject.faculty ? ` (${subject.faculty})` : " (COMMON)"}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label className="block space-y-1">
             <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Attendance Date</span>
             <input
