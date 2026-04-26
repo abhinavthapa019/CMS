@@ -2,7 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Admin from "./pages/Admin";
 import Teacher from "./pages/Teacher";
-import { AuthProvider, useAuth } from "./state/auth.jsx";
+import { AuthProvider } from "./state/auth.jsx";
+import { useAuth } from "./state/useAuth.jsx";
 
 function Protected({ children, roles }) {
   const { token, user } = useAuth();

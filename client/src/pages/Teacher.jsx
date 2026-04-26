@@ -1,5 +1,5 @@
 import TeacherWorkspace from "../components/teacher/TeacherWorkspace";
-import { useAuth } from "../state/auth.jsx";
+import { useAuth } from "../state/useAuth.jsx";
 
 export default function Teacher() {
   const { user, token, logout } = useAuth();

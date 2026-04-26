@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import AdminHeader from "./AdminHeader";
 import AdminTabs from "./AdminTabs";
@@ -19,6 +19,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
 
   const [users, setUsers] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [teacherAssignments, setTeacherAssignments] = useState([]);
   const [students, setStudents] = useState([]);
   const [classFilter, setClassFilter] = useState({ batch: "", faculty: "", section: "" });
   const [attendanceFilter, setAttendanceFilter] = useState({
@@ -30,16 +31,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   });
   const [attendanceSummary, setAttendanceSummary] = useState([]);
   const [analytics, setAnalytics] = useState(null);
-  const [teacherSearch, setTeacherSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
-
-  const [teacherForm, setTeacherForm] = useState({
-    name: "",
-    email: "",
-    password: "",
-    subjectId: "",
-    batch: "ELEVEN",
-  });
 
   const [studentForm, setStudentForm] = useState({
     firstName: "",
@@ -53,26 +45,22 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     travelTime: 1,
   });
 
-  async function loadAdminData() {
+  const loadAdminData = useCallback(async () => {
     if (!token || user?.role !== "ADMIN") return;
 
     setLoading(true);
     setError("");
     try {
-      const [usersRes, attendanceRes, analyticsRes] = await Promise.all([
+      const [usersRes, attendanceRes, analyticsRes, teacherAssignmentRes] = await Promise.all([
         api("/api/users", { token }),
         api("/api/subjects", { token }),
         api("/api/analytics/admin/overview", { token }),
+        api("/api/teacher-subject-assignments", { token }),
       ]);
       setUsers(usersRes.users || []);
       const subjectRows = attendanceRes.subjects || [];
       setSubjects(subjectRows);
-
-      setTeacherForm((prev) => {
-        if (prev.subjectId) return prev;
-        const firstForScience = subjectRows.find((s) => s.faculty === "SCIENCE") || subjectRows[0];
-        return { ...prev, subjectId: firstForScience ? String(firstForScience.id) : "" };
-      });
+      setTeacherAssignments(teacherAssignmentRes.assignments || []);
 
       setAnalytics(analyticsRes);
     } catch (e) {
@@ -80,11 +68,11 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [token, user?.role]);
 
   useEffect(() => {
     loadAdminData();
-  }, [token, user?.role]);
+  }, [loadAdminData]);
 
   useEffect(() => {
     if (!token || user?.role !== "ADMIN") return;
@@ -109,22 +97,25 @@ export default function AdminWorkspace({ user, token, onLogout }) {
 
   useEffect(() => {
     if (!token || user?.role !== "ADMIN") return;
-    if (!classFilter.batch || !classFilter.faculty || !classFilter.section) {
+    const classBatch = classFilter.batch;
+    const classFaculty = classFilter.faculty;
+    const classSection = classFilter.section;
+    if (!classBatch || !classFaculty || !classSection) {
       setStudents([]);
       return;
     }
 
-    const q = new URLSearchParams(classFilter).toString();
+    const q = new URLSearchParams({
+      batch: classBatch,
+      faculty: classFaculty,
+      section: classSection,
+    }).toString();
     api(`/api/students?${q}`, { token })
       .then((res) => setStudents(res.students || []))
       .catch((e) => setError(e.message || "Failed to load class students"));
   }, [token, user?.role, classFilter.batch, classFilter.faculty, classFilter.section]);
 
-  const filteredUsers = useMemo(() => {
-    const q = teacherSearch.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter((u) => (`${u.name} ${u.email} ${u.role}`).toLowerCase().includes(q));
-  }, [users, teacherSearch]);
+  const teacherUsers = useMemo(() => users.filter((u) => u.role === "TEACHER"), [users]);
 
   const filteredStudents = useMemo(() => {
     const q = studentSearch.trim().toLowerCase();
@@ -132,8 +123,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     return students.filter((s) => (`${s.firstName} ${s.lastName} ${s.rollNumber}`).toLowerCase().includes(q));
   }, [students, studentSearch]);
 
-  async function handleCreateTeacher(e) {
-    e.preventDefault();
+  async function handleCreateTeacher(payload) {
     setSubmittingTeacher(true);
     setError("");
     setNotice("");
@@ -142,27 +132,37 @@ export default function AdminWorkspace({ user, token, onLogout }) {
         token,
         method: "POST",
         body: {
-          name: teacherForm.name,
-          email: teacherForm.email,
-          password: teacherForm.password,
+          ...payload,
           role: "TEACHER",
-          subjectAssignments: teacherForm.subjectId
-            ? [{ subjectId: Number(teacherForm.subjectId), batch: teacherForm.batch || null }]
-            : [],
         },
       });
       setNotice("Teacher account created successfully.");
-      setTeacherForm((prev) => ({
-        name: "",
-        email: "",
-        password: "",
-        subjectId: prev.subjectId,
-        batch: "ELEVEN",
-      }));
       await loadAdminData();
-      setTab("teachers");
+      return true;
     } catch (e) {
       setError(e.message || "Unable to create teacher");
+      return false;
+    } finally {
+      setSubmittingTeacher(false);
+    }
+  }
+
+  async function handleUpdateTeacher(teacherId, payload) {
+    setSubmittingTeacher(true);
+    setError("");
+    setNotice("");
+    try {
+      await api(`/api/users/${teacherId}`, {
+        token,
+        method: "PUT",
+        body: payload,
+      });
+      setNotice("Teacher updated successfully.");
+      await loadAdminData();
+      return true;
+    } catch (e) {
+      setError(e.message || "Unable to update teacher");
+      return false;
     } finally {
       setSubmittingTeacher(false);
     }
@@ -204,7 +204,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   }
 
   async function handleDeleteUser(userRow) {
-    const ok = window.confirm(`Delete user ${userRow.name} (${userRow.email})?`);
+    const ok = window.confirm(`Delete Teacher: ${userRow.name}?`);
     if (!ok) return;
 
     setDeletingUserId(userRow.id);
@@ -269,15 +269,13 @@ export default function AdminWorkspace({ user, token, onLogout }) {
         {tab === "teachers" ? (
           <TeachersSection
             loading={loading}
-            users={filteredUsers}
+            teachers={teacherUsers}
             subjects={subjects}
-            search={teacherSearch}
-            onSearchChange={setTeacherSearch}
-            teacherForm={teacherForm}
-            onTeacherFormChange={(field, value) => setTeacherForm((prev) => ({ ...prev, [field]: value }))}
-            onSubmit={handleCreateTeacher}
+            assignments={teacherAssignments}
             submitting={submittingTeacher}
-            onDeleteUser={handleDeleteUser}
+            onCreateTeacher={handleCreateTeacher}
+            onUpdateTeacher={handleUpdateTeacher}
+            onDeleteTeacher={handleDeleteUser}
             deletingUserId={deletingUserId}
           />
         ) : null}

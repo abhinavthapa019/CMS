@@ -1,7 +1,6 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { api } from "../api";
-
-const AuthCtx = createContext();
+import { AuthCtx } from "./authContext.jsx";
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem("token") || "");
@@ -33,5 +32,3 @@ export function AuthProvider({ children }) {
 
   return <AuthCtx.Provider value={{ token, user, login, logout }}>{children}</AuthCtx.Provider>;
 }
-
-export const useAuth = () => useContext(AuthCtx);

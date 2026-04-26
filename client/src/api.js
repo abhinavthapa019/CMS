@@ -11,7 +11,7 @@ export async function api(path, { method = "GET", body, token } = {}) {
       },
       body: body ? JSON.stringify(body) : undefined,
     });
-  } catch (err) {
+  } catch {
     throw new Error("Network error: cannot reach API");
   }
 

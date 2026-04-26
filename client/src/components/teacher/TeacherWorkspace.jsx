@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import AttendanceSection from "./AttendanceSection";
 import MarksSection from "./MarksSection";
@@ -15,7 +15,6 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
   const [students, setStudents] = useState([]);
   const [assignments, setAssignments] = useState([]);
-  const [subjects, setSubjects] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [actionLog, setActionLog] = useState([]);
   const [attendanceCount, setAttendanceCount] = useState(0);
@@ -24,6 +23,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   const [submittingAttendance, setSubmittingAttendance] = useState(false);
   const [submittingMarks, setSubmittingMarks] = useState(false);
   const [submittingPrediction, setSubmittingPrediction] = useState(false);
+  const [submittingPredictionBatch, setSubmittingPredictionBatch] = useState(false);
 
   const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [attendanceMap, setAttendanceMap] = useState({});
@@ -44,6 +44,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
   const [predictionStudentId, setPredictionStudentId] = useState("");
   const [predictionResult, setPredictionResult] = useState(null);
+  const [predictionBatchResult, setPredictionBatchResult] = useState(null);
 
   const allowedClassOptions = useMemo(() => {
     const map = new Map();
@@ -110,18 +111,14 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     return query ? `?${query}` : "";
   }
 
-  async function loadStudents(filters = classFilters) {
+  const loadStudents = useCallback(async (filters) => {
     if (!token || user?.role !== "TEACHER") return;
 
     setLoading(true);
     setError("");
     try {
-      const [subjectRes, assignmentRes] = await Promise.all([
-        api("/api/subjects", { token }),
-        api("/api/teacher-subject-assignments", { token }),
-      ]);
+      const assignmentRes = await api("/api/teacher-subject-assignments", { token });
 
-      setSubjects(subjectRes.subjects || []);
       setAssignments(assignmentRes.assignments || []);
 
       const assignmentRows = assignmentRes.assignments || [];
@@ -166,11 +163,15 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [token, user?.role, user?.id, selectedSubjectId]);
 
   useEffect(() => {
-    loadStudents();
-  }, [token, user?.role, user?.id]);
+    loadStudents({
+      batch: classFilters.batch,
+      faculty: classFilters.faculty,
+      section: classFilters.section,
+    });
+  }, [loadStudents, classFilters.batch, classFilters.faculty, classFilters.section, selectedSubjectId]);
 
   useEffect(() => {
     if (allowedClassOptions.length === 0) return;
@@ -179,11 +180,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
       const first = allowedClassOptions[0];
       setClassFilters({ batch: first.batch, faculty: first.faculty, section: first.section });
     }
-  }, [allowedClassOptions.length, classKey]);
-
-  useEffect(() => {
-    loadStudents(classFilters);
-  }, [classFilters.batch, classFilters.faculty, classFilters.section, selectedSubjectId]);
+  }, [allowedClassOptions, classKey]);
 
   useEffect(() => {
     if (allowedSubjectOptions.length === 0) {
@@ -194,7 +191,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     if (!exists) {
       setSelectedSubjectId(String(allowedSubjectOptions[0].id));
     }
-  }, [allowedSubjectOptions.length, classFilters.batch, classFilters.faculty]);
+  }, [allowedSubjectOptions, selectedSubjectId]);
 
   useEffect(() => {
     if (students.length === 0) return;
@@ -329,6 +326,57 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     }
   }
 
+  async function handlePredictClass() {
+    if (students.length === 0) {
+      setError("No students found in this class.");
+      return;
+    }
+
+    setSubmittingPredictionBatch(true);
+    setError("");
+    setNotice("");
+    try {
+      const results = await Promise.allSettled(
+        students.map((student) =>
+          api("/api/predict-grade", {
+            token,
+            method: "POST",
+            body: { studentId: student.id },
+          }).then((res) => ({
+            studentId: student.id,
+            name: `${student.firstName} ${student.lastName}`,
+            rollNumber: student.rollNumber,
+            predictedGrade: res.predicted_grade,
+          }))
+        )
+      );
+
+      const successful = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+      const failed = results.filter((r) => r.status === "rejected").length;
+
+      setPredictionBatchResult({
+        total: students.length,
+        successful,
+        failed,
+      });
+
+      if (successful.length > 0) {
+        setPredictionCount((v) => v + successful.length);
+      }
+
+      setNotice(`Class prediction complete: ${successful.length}/${students.length} successful.`);
+      logAction(
+        "prediction",
+        "Class prediction completed",
+        `${classFilters.batch} / ${classFilters.faculty} / ${classFilters.section}`
+      );
+    } catch (e) {
+      setError(e.message || "Class prediction failed.");
+    } finally {
+      setSubmittingPredictionBatch(false);
+    }
+  }
+
   const actionSummary = useMemo(
     () => ({
       attendanceCount,
@@ -405,8 +453,12 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
             predictionStudentId={predictionStudentId}
             onPredictionStudentChange={setPredictionStudentId}
             onPredict={handlePredict}
+            onPredictClass={handlePredictClass}
             submitting={submittingPrediction}
+            submittingBatch={submittingPredictionBatch}
             result={predictionResult}
+            batchResult={predictionBatchResult}
+            classFilters={classFilters}
           />
         ) : null}
       </main>
