@@ -17,12 +17,26 @@ import {
 
 const PIE_COLORS = ["#15803d", "#b91c1c"];
 
+function piePercentLabel({ percent }) {
+  return `${Math.round((percent || 0) * 100)}%`;
+}
+
 function prettyClass(item) {
   const batch = item.batch === "ELEVEN" ? "11" : item.batch === "TWELVE" ? "12" : item.batch;
   return `${batch}-${item.faculty}-${item.section}`;
 }
 
 export default function DashboardSection({ users, students, analytics, loading, onGoStudents, onGoTeachers }) {
+  const periodLabel = analytics?.periodLabel || "Current Month";
+  const recentStudents = [...students]
+    .sort((a, b) => {
+      const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (bTime !== aTime) return bTime - aTime;
+      return (b?.id || 0) - (a?.id || 0);
+    })
+    .slice(0, 5);
+
   const kpis = analytics?.kpis || {
     totalStudents: students.length,
     attendancePercent: 0,
@@ -37,8 +51,8 @@ export default function DashboardSection({ users, students, analytics, loading, 
     <>
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon="school" label="Total Students" value={kpis.totalStudents} tone="primary" />
-        <StatCard icon="fact_check" label="Attendance %" value={`${kpis.attendancePercent}%`} tone="secondary" />
-        <StatCard icon="today" label="Daily Present" value={kpis.dailyPresentCount} tone="tertiary" />
+        <StatCard icon="fact_check" label={`Attendance % (${periodLabel})`} value={`${kpis.attendancePercent}%`} tone="secondary" />
+        <StatCard icon="today" label={`Present (Latest Day in ${periodLabel})`} value={kpis.dailyPresentCount} tone="tertiary" />
         <StatCard icon="group" label="Total Faculty" value={users.filter((u) => u.role === "TEACHER").length} tone="secondary" />
       </section>
 
@@ -67,7 +81,7 @@ export default function DashboardSection({ users, students, analytics, loading, 
 
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2 bg-surface-container-lowest rounded-2xl p-5 shadow-sm border border-outline-variant/10">
-          <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Global Daily Attendance Trend</h3>
+          <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Global Daily Attendance Trend ({periodLabel})</h3>
           <div className="w-full h-72">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend}>
@@ -84,11 +98,11 @@ export default function DashboardSection({ users, students, analytics, loading, 
         </div>
 
         <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm border border-outline-variant/10">
-          <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Present vs Absent</h3>
+          <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Present vs Absent ({periodLabel})</h3>
           <div className="w-full h-72">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={distribution} dataKey="value" nameKey="name" outerRadius={90} label>
+                <Pie data={distribution} dataKey="value" nameKey="name" outerRadius={90} label={piePercentLabel}>
                   {distribution.map((entry, index) => (
                     <Cell key={`${entry.name}-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
@@ -102,7 +116,7 @@ export default function DashboardSection({ users, students, analytics, loading, 
       </section>
 
       <section className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm border border-outline-variant/10">
-        <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Class-wise Daily Attendance</h3>
+        <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Class-wise Daily Attendance ({periodLabel})</h3>
         <div className="w-full h-72">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={classDaily.map((item) => ({ ...item, classLabel: prettyClass(item) }))}>
@@ -129,7 +143,7 @@ export default function DashboardSection({ users, students, analytics, loading, 
           <p className="text-secondary text-sm">No students yet. Add your first student.</p>
         ) : (
           <div className="space-y-3">
-            {students.slice(0, 5).map((s) => (
+            {recentStudents.map((s) => (
               <div key={s.id} className="flex items-center justify-between border-b border-outline-variant/20 pb-2">
                 <p className="font-medium text-on-surface">{s.firstName} {s.lastName}</p>
                 <p className="text-sm text-secondary">#{s.rollNumber}</p>

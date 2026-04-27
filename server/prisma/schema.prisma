@@ -48,6 +48,7 @@ model User {
   attendance Attendance[]
   marks      Mark[]
   subjectAssignments TeacherSubjectAssignment[]
+  classTeacherAssignments ClassTeacherAssignment[]
 }
 
 model Student {
@@ -100,6 +101,21 @@ model TeacherSubjectAssignment {
   @@unique([teacherId, subjectId, batch])
   @@index([teacherId])
   @@index([subjectId])
+}
+
+model ClassTeacherAssignment {
+  id        Int           @id @default(autoincrement())
+  teacherId Int
+  batch     AcademicBatch
+  faculty   Faculty
+  section   Section
+  createdAt DateTime      @default(now())
+
+  teacher   User          @relation(fields: [teacherId], references: [id])
+
+  @@unique([batch, faculty, section])
+  @@unique([teacherId])
+  @@index([teacherId])
 }
 
 model Attendance {

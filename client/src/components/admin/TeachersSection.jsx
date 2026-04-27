@@ -43,14 +43,12 @@ function getSubjectCatalogFor(grade, department, subjects) {
   const managementRows = subjects.filter((s) => s.faculty === "MANAGEMENT");
   const commonRows = subjects.filter((s) => s.faculty == null);
 
-  const scienceNames = new Set(scienceRows.map((s) => normalizeName(s.name)));
-  const managementNames = new Set(managementRows.map((s) => normalizeName(s.name)));
-  const mutualNames = new Set([...scienceNames].filter((name) => managementNames.has(name)));
-
-  const mutualRows = subjects.filter((s) => mutualNames.has(normalizeName(s.name)));
+  if (department === "COMMON") {
+    return uniqueBySubjectName(commonRows);
+  }
 
   if (department === "BOTH") {
-    return uniqueBySubjectName([...commonRows, ...mutualRows]);
+    return uniqueBySubjectName([...commonRows, ...scienceRows, ...managementRows]);
   }
 
   if (department === "SCIENCE") {
@@ -210,8 +208,8 @@ function TeacherModal({
 
             {form.assignments.map((row, index) => {
               const departmentOptions = row.grade === "BOTH"
-                ? ["BOTH", ...new Set(Object.values(CURRICULUM).flatMap((deptMap) => Object.keys(deptMap)))]
-                : ["BOTH", ...Object.keys(CURRICULUM[row.grade] || {})];
+                ? ["BOTH", "COMMON", ...new Set(Object.values(CURRICULUM).flatMap((deptMap) => Object.keys(deptMap)))]
+                : ["BOTH", "COMMON", ...Object.keys(CURRICULUM[row.grade] || {})];
 
               const subjectOptions = row.department
                 ? getSubjectCatalogFor(row.grade, row.department, subjects)
@@ -258,8 +256,9 @@ function TeacherModal({
                     >
                       <option value="">Select department</option>
                       <option value="BOTH">BOTH</option>
+                      <option value="COMMON">COMMON</option>
                       {departmentOptions.map((dep) => (
-                        dep === "BOTH" ? null :
+                        dep === "BOTH" || dep === "COMMON" ? null :
                         <option key={dep} value={dep}>{dep}</option>
                       ))}
                     </select>
@@ -324,6 +323,7 @@ export default function TeachersSection({
   teachers,
   subjects,
   assignments,
+  classTeacherAssignments,
   submitting,
   onCreateTeacher,
   onUpdateTeacher,
@@ -377,6 +377,16 @@ export default function TeachersSection({
     }
     return map;
   }, [normalizedAssignments]);
+
+  const classTeacherByTeacher = useMemo(() => {
+    const map = new Map();
+    for (const row of classTeacherAssignments || []) {
+      const list = map.get(row.teacherId) || [];
+      list.push(row);
+      map.set(row.teacherId, list);
+    }
+    return map;
+  }, [classTeacherAssignments]);
 
   const departmentOptions = useMemo(() => {
     const base = Object.keys(CURRICULUM[filters.grade] || {});
@@ -571,6 +581,18 @@ export default function TeachersSection({
                       <div key={`${grade}-${department}-${entry.teacher.id}`} className="px-4 py-3 flex flex-wrap items-center gap-3">
                         <div className="min-w-[220px]">
                           <p className="font-medium text-on-surface">{entry.teacher.name}</p>
+                          {(classTeacherByTeacher.get(entry.teacher.id) || []).length > 0 ? (
+                            <div className="mt-1 space-y-1">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-tertiary-container text-on-tertiary-container">
+                                Class Teacher
+                              </span>
+                              <p className="text-xs text-secondary">
+                                {(classTeacherByTeacher.get(entry.teacher.id) || [])
+                                  .map((ct) => `${ct.batch === "ELEVEN" ? "11" : "12"}/${ct.faculty}/${ct.section}`)
+                                  .join(", ")}
+                              </p>
+                            </div>
+                          ) : null}
                           <p className="text-sm text-secondary">{entry.teacher.email}</p>
                         </div>
 

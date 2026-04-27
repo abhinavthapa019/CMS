@@ -37,6 +37,23 @@ function classKey(c) {
   return `${c.batch}|${c.faculty}|${c.section}`;
 }
 
+function startOfDayUtc(dateValue) {
+  const d = new Date(dateValue);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+}
+
+async function assertTeacherIsClassTeacher(teacherId, batch, faculty, section) {
+  const row = await prisma.classTeacherAssignment.findFirst({
+    where: {
+      teacherId,
+      batch,
+      faculty,
+      section,
+    },
+  });
+  return !!row;
+}
+
 async function getTeacherAllowedClasses(teacherId, subjectId) {
   const where = {
     teacherId,
@@ -59,6 +76,23 @@ async function getTeacherAllowedClasses(teacherId, subjectId) {
     for (const combo of classCombosForAssignment(assignment)) {
       set.add(classKey(combo));
     }
+  }
+  return set;
+}
+
+async function getTeacherClassTeacherClasses(teacherId) {
+  const rows = await prisma.classTeacherAssignment.findMany({
+    where: { teacherId },
+    select: {
+      batch: true,
+      faculty: true,
+      section: true,
+    },
+  });
+
+  const set = new Set();
+  for (const row of rows) {
+    set.add(classKey(row));
   }
   return set;
 }
@@ -113,7 +147,18 @@ router.get("/api/students", requireAuth(), async (req, res) => {
       return res.status(400).json({ ok: false, error: "Invalid subjectId" });
     }
 
-    const allowed = await getTeacherAllowedClasses(req.user.userId, subjectId);
+    const [subjectAllowed, classTeacherAllowed] = await Promise.all([
+      getTeacherAllowedClasses(req.user.userId, subjectId),
+      getTeacherClassTeacherClasses(req.user.userId),
+    ]);
+
+    const allowed = new Set(subjectAllowed);
+    if (!subjectId) {
+      for (const key of classTeacherAllowed) {
+        allowed.add(key);
+      }
+    }
+
     if (allowed.size === 0) {
       return res.json({ ok: true, students: [] });
     }
@@ -211,6 +256,89 @@ router.get("/api/students/attendance-summary", requireAuth(Role.ADMIN), async (r
   return res.json({ ok: true, summary });
 });
 
+router.get("/api/attendance/class-dates", requireAuth(Role.TEACHER), async (req, res) => {
+  const batch = req.query.batch;
+  const faculty = req.query.faculty;
+  const section = req.query.section;
+
+  if (!Object.values(AcademicBatch).includes(batch) || !Object.values(Faculty).includes(faculty) || !Object.values(Section).includes(section)) {
+    return res.status(400).json({ ok: false, error: "Invalid class filter values" });
+  }
+
+  const allowed = await assertTeacherIsClassTeacher(req.user.userId, batch, faculty, section);
+  if (!allowed) {
+    return res.status(403).json({ ok: false, error: "You are not the assigned class teacher for this class" });
+  }
+
+  const students = await prisma.student.findMany({
+    where: { batch, faculty, section },
+    select: { id: true },
+  });
+
+  if (students.length === 0) {
+    return res.json({ ok: true, dates: [] });
+  }
+
+  const rows = await prisma.attendance.findMany({
+    where: {
+      studentId: { in: students.map((s) => s.id) },
+    },
+    select: { date: true },
+    distinct: ["date"],
+    orderBy: { date: "desc" },
+  });
+
+  const dates = rows.map((r) => startOfDayUtc(r.date).toISOString().slice(0, 10));
+  return res.json({ ok: true, dates });
+});
+
+router.get("/api/attendance/class", requireAuth(Role.TEACHER), async (req, res) => {
+  const batch = req.query.batch;
+  const faculty = req.query.faculty;
+  const section = req.query.section;
+  const date = req.query.date;
+
+  if (!Object.values(AcademicBatch).includes(batch) || !Object.values(Faculty).includes(faculty) || !Object.values(Section).includes(section)) {
+    return res.status(400).json({ ok: false, error: "Invalid class filter values" });
+  }
+
+  if (!date) {
+    return res.status(400).json({ ok: false, error: "date is required" });
+  }
+
+  const allowed = await assertTeacherIsClassTeacher(req.user.userId, batch, faculty, section);
+  if (!allowed) {
+    return res.status(403).json({ ok: false, error: "You are not the assigned class teacher for this class" });
+  }
+
+  const parsedDate = startOfDayUtc(date);
+
+  const students = await prisma.student.findMany({
+    where: { batch, faculty, section },
+    select: { id: true },
+  });
+
+  if (students.length === 0) {
+    return res.json({ ok: true, attendance: [] });
+  }
+
+  const attendance = await prisma.attendance.findMany({
+    where: {
+      studentId: { in: students.map((s) => s.id) },
+      date: parsedDate,
+    },
+    select: {
+      id: true,
+      studentId: true,
+      present: true,
+      date: true,
+    },
+    orderBy: { studentId: "asc" },
+  });
+
+  return res.json({ ok: true, attendance });
+});
+
 router.get("/api/students/:id", requireAuth(), async (req, res) => {
   const id = Number(req.params.id);
   const student = await prisma.student.findUnique({ where: { id } });
@@ -255,8 +383,8 @@ const attendanceSchema = z.object({
 });
 
 router.post("/api/students/:id/attendance", requireAuth(), validate(attendanceSchema), async (req, res) => {
-  if (req.user.role !== Role.ADMIN && req.user.role !== Role.TEACHER) {
-    return res.status(403).json({ ok: false, error: "Forbidden" });
+  if (req.user.role !== Role.TEACHER) {
+    return res.status(403).json({ ok: false, error: "Only assigned class teachers can take attendance" });
   }
   const studentId = Number(req.params.id);
   const { present, date, batch, faculty, section, subjectId } = req.validated.body;
@@ -270,41 +398,43 @@ router.post("/api/students/:id/attendance", requireAuth(), validate(attendanceSc
     return res.status(400).json({ ok: false, error: "Student does not belong to the selected class" });
   }
 
-  if (req.user.role === Role.TEACHER) {
-    const allowed = await getTeacherAllowedClasses(req.user.userId, subjectId);
-    const requested = classKey({ batch: student.batch, faculty: student.faculty, section: student.section });
-    if (!allowed.has(requested)) {
-      return res.status(403).json({ ok: false, error: "You do not have access to this class" });
-    }
+  if (subjectId) {
+    return res.status(400).json({ ok: false, error: "Attendance is class-level only. Do not provide subjectId." });
   }
 
-  const attendanceDate = date ? new Date(date) : new Date();
+  const allowed = await assertTeacherIsClassTeacher(req.user.userId, student.batch, student.faculty, student.section);
+  if (!allowed) {
+    return res.status(403).json({ ok: false, error: "You are not the assigned class teacher for this class" });
+  }
+
+  const attendanceDate = date ? startOfDayUtc(date) : startOfDayUtc(new Date());
   if (attendanceDate.getTime() > Date.now()) {
     return res.status(400).json({ ok: false, error: "Attendance date cannot be in the future" });
   }
 
-  if (subjectId) {
-    const subjectExists = await prisma.subject.findUnique({ where: { id: subjectId } });
-    if (!subjectExists) {
-      return res.status(404).json({ ok: false, error: "Subject not found" });
-    }
-  }
-
   try {
-    const attendance = await prisma.attendance.create({
-      data: {
+    const attendance = await prisma.attendance.upsert({
+      where: {
+        studentId_date: {
+          studentId,
+          date: attendanceDate,
+        },
+      },
+      create: {
         studentId,
         teacherId: req.user.userId,
         present,
         date: attendanceDate,
-        subjectId: subjectId || null,
+        subjectId: null,
+      },
+      update: {
+        present,
+        teacherId: req.user.userId,
+        subjectId: null,
       },
     });
-    return res.status(201).json({ ok: true, attendance });
+    return res.status(200).json({ ok: true, attendance });
   } catch (err) {
-    if (err.code === "P2002") {
-      return res.status(409).json({ ok: false, error: "Attendance already recorded for this date" });
-    }
     return res.status(500).json({ ok: false, error: "Failed to record attendance" });
   }
 });

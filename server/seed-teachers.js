@@ -5,19 +5,24 @@ const prisma = new PrismaClient();
 
 async function run() {
   const teachers = [
-    { name: "Sanjay Gurung", email: "sanjay.gurung@campus.local", password: "sanjay123" },
-    { name: "Anita Shrestha", email: "anita.shrestha@campus.local", password: "anita123" },
-    { name: "Bikash Karki", email: "bikash.karki@campus.local", password: "bikash123" },
-    { name: "Prakash Thapa", email: "prakash.thapa@campus.local", password: "prakash123" },
-    { name: "Nirmala Rai", email: "nirmala.rai@campus.local", password: "nirmala123" },
+    { name: "Sushil Adhikari", email: "sushil.adhikari@campus.local", password: "sushil123" },
+    { name: "Rojina Karki", email: "rojina.karki@campus.local", password: "rojina123" },
+    { name: "Bikram Shrestha", email: "bikram.shrestha@campus.local", password: "bikram123" },
+    { name: "Dipesh Poudel", email: "dipesh.poudel@campus.local", password: "dipesh123" },
+    { name: "Anjana Rai", email: "anjana.rai@campus.local", password: "anjana123" },
+    { name: "Kiran Bhandari", email: "kiran.bhandari@campus.local", password: "kiran123" },
+    { name: "Sarita Khadka", email: "sarita.khadka@campus.local", password: "sarita123" },
+    { name: "Prabin Koirala", email: "prabin.koirala@campus.local", password: "prabin123" },
+    { name: "Sagar Bhattarai", email: "sagar.bhattarai@campus.local", password: "sagar123" },
+    { name: "Manisha Thapa", email: "manisha.thapa@campus.local", password: "manisha123" },
+    { name: "Kamal Gurung", email: "kamal.gurung@campus.local", password: "kamal123" },
+    { name: "Nisha Acharya", email: "nisha.acharya@campus.local", password: "nisha123" },
+    { name: "Ramesh Oli", email: "ramesh.oli@campus.local", password: "ramesh123" },
+    { name: "Pooja Basnet", email: "pooja.basnet@campus.local", password: "pooja123" },
     { name: "Roshan Lama", email: "roshan.lama@campus.local", password: "roshan123" },
-    { name: "Manisha Poudel", email: "manisha.poudel@campus.local", password: "manisha123" },
-    { name: "Deepak Adhikari", email: "deepak.adhikari@campus.local", password: "deepak123" },
-    { name: "Sarita KC", email: "sarita.kc@campus.local", password: "sarita123" },
-    { name: "Kamal Bhattarai", email: "kamal.bhattarai@campus.local", password: "kamal123" },
-    { name: "Binita Rana", email: "binita.rana@campus.local", password: "binita123" },
-    { name: "Prabin Malla", email: "prabin.malla@campus.local", password: "prabin123" },
-    { name: "Sabina Dhakal", email: "sabina.dhakal@campus.local", password: "sabina123" },
+    { name: "Binita Nepal", email: "binita.nepal@campus.local", password: "binita123" },
+    { name: "Sabina Kafle", email: "sabina.kafle@campus.local", password: "sabina123" },
+    { name: "Pratima Gautam", email: "pratima.gautam@campus.local", password: "pratima123" },
   ];
 
   const teacherEmails = teachers.map((t) => t.email);

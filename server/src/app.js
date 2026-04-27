@@ -8,6 +8,7 @@ const studentRoutes = require("./routes/students");
 const predictionRoutes = require("./routes/prediction");
 const academicRoutes = require("./routes/academics");
 const analyticsRoutes = require("./routes/analytics");
+const classTeacherRoutes = require("./routes/classTeachers");
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use(studentRoutes);
 app.use(predictionRoutes);
 app.use(academicRoutes);
 app.use(analyticsRoutes);
+app.use(classTeacherRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

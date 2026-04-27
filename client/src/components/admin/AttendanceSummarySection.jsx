@@ -1,14 +1,8 @@
-export default function AttendanceSummarySection({ loading, summary, subjects, filter, onFilterChange }) {
-  const visibleSummary = filter.subjectId ? summary.filter((s) => s.totalCount > 0) : summary;
+export default function AttendanceSummarySection({ loading, summary, filter, onFilterChange }) {
+  const visibleSummary = summary;
   const atRisk = visibleSummary.filter((s) => s.attendancePercent < 40);
 
   const displayBatch = (batch) => (batch === "ELEVEN" ? "11" : batch === "TWELVE" ? "12" : batch);
-
-  const filteredSubjects = subjects.filter((subject) => {
-    if (filter.department === "BOTH") return true;
-    if (filter.department === "COMMON") return !subject.faculty;
-    return subject.faculty === filter.department;
-  });
 
   return (
     <section className="grid lg:grid-cols-5 gap-4">
@@ -22,7 +16,7 @@ export default function AttendanceSummarySection({ loading, summary, subjects, f
           Showing {visibleSummary.length} students for class {displayBatch(filter.batch)} / {filter.faculty} / {filter.section}
         </p>
 
-        <div className="grid sm:grid-cols-5 gap-2">
+        <div className="grid sm:grid-cols-3 gap-2">
           <select
             className="rounded-lg bg-surface-container-highest border-none"
             value={filter.batch}
@@ -55,26 +49,6 @@ export default function AttendanceSummarySection({ loading, summary, subjects, f
                 <option value="MARKETING">MARKETING</option>
               </>
             )}
-          </select>
-          <select
-            className="rounded-lg bg-surface-container-highest border-none"
-            value={filter.subjectId}
-            onChange={(e) => onFilterChange("subjectId", e.target.value)}
-          >
-            <option value="">All Subjects</option>
-            {filteredSubjects.map((subject) => (
-              <option key={subject.id} value={subject.id}>{subject.name}</option>
-            ))}
-          </select>
-          <select
-            className="rounded-lg bg-surface-container-highest border-none"
-            value={filter.department}
-            onChange={(e) => onFilterChange("department", e.target.value)}
-          >
-            <option value="SCIENCE">SCIENCE</option>
-            <option value="MANAGEMENT">MANAGEMENT</option>
-            <option value="COMMON">COMMON</option>
-            <option value="BOTH">BOTH</option>
           </select>
         </div>
 

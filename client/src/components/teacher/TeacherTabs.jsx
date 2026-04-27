@@ -5,10 +5,12 @@ const TABS = [
   { id: "prediction", label: "Prediction" },
 ];
 
-export default function TeacherTabs({ tab, onChange, onRefresh }) {
+export default function TeacherTabs({ tab, onChange, onRefresh, showAttendance }) {
+  const visibleTabs = TABS.filter((item) => showAttendance || item.id !== "attendance");
+
   return (
     <section className="flex flex-wrap gap-2">
-      {TABS.map((item) => (
+      {visibleTabs.map((item) => (
         <button
           key={item.id}
           onClick={() => onChange(item.id)}

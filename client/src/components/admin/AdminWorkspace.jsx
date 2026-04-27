@@ -3,6 +3,7 @@ import { api } from "../../api";
 import AdminHeader from "./AdminHeader";
 import AdminTabs from "./AdminTabs";
 import AttendanceSummarySection from "./AttendanceSummarySection";
+import ClassTeachersSection from "./ClassTeachersSection";
 import DashboardSection from "./DashboardSection";
 import StudentsSection from "./StudentsSection";
 import TeachersSection from "./TeachersSection";
@@ -14,20 +15,21 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   const [submittingStudent, setSubmittingStudent] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState(null);
   const [deletingStudentId, setDeletingStudentId] = useState(null);
+  const [deletingClassTeacherId, setDeletingClassTeacherId] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const [users, setUsers] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [teacherAssignments, setTeacherAssignments] = useState([]);
+  const [classTeacherAssignments, setClassTeacherAssignments] = useState([]);
+  const [allStudents, setAllStudents] = useState([]);
   const [students, setStudents] = useState([]);
   const [classFilter, setClassFilter] = useState({ batch: "", faculty: "", section: "" });
   const [attendanceFilter, setAttendanceFilter] = useState({
     batch: "ELEVEN",
     faculty: "SCIENCE",
     section: "BIO",
-    department: "SCIENCE",
-    subjectId: "",
   });
   const [attendanceSummary, setAttendanceSummary] = useState([]);
   const [analytics, setAnalytics] = useState(null);
@@ -51,16 +53,20 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     setLoading(true);
     setError("");
     try {
-      const [usersRes, attendanceRes, analyticsRes, teacherAssignmentRes] = await Promise.all([
+      const [usersRes, attendanceRes, analyticsRes, teacherAssignmentRes, classTeacherRes, studentsRes] = await Promise.all([
         api("/api/users", { token }),
         api("/api/subjects", { token }),
         api("/api/analytics/admin/overview", { token }),
         api("/api/teacher-subject-assignments", { token }),
+        api("/api/class-teacher-assignments", { token }),
+        api("/api/students", { token }),
       ]);
       setUsers(usersRes.users || []);
       const subjectRows = attendanceRes.subjects || [];
       setSubjects(subjectRows);
       setTeacherAssignments(teacherAssignmentRes.assignments || []);
+      setClassTeacherAssignments(classTeacherRes.assignments || []);
+      setAllStudents(studentsRes.students || []);
 
       setAnalytics(analyticsRes);
     } catch (e) {
@@ -80,7 +86,6 @@ export default function AdminWorkspace({ user, token, onLogout }) {
       batch: attendanceFilter.batch,
       faculty: attendanceFilter.faculty,
       section: attendanceFilter.section,
-      ...(attendanceFilter.subjectId ? { subjectId: attendanceFilter.subjectId } : {}),
     }).toString();
 
     api(`/api/students/attendance-summary?${q}`, { token })
@@ -92,7 +97,6 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     attendanceFilter.batch,
     attendanceFilter.faculty,
     attendanceFilter.section,
-    attendanceFilter.subjectId,
   ]);
 
   useEffect(() => {
@@ -245,6 +249,46 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     }
   }
 
+  async function handleAssignClassTeacher(payload) {
+    setSubmittingTeacher(true);
+    setError("");
+    setNotice("");
+    try {
+      await api("/api/class-teacher-assignments", {
+        token,
+        method: "PUT",
+        body: payload,
+      });
+      setNotice("Class teacher assigned successfully.");
+      await loadAdminData();
+    } catch (e) {
+      setError(e.message || "Unable to assign class teacher");
+    } finally {
+      setSubmittingTeacher(false);
+    }
+  }
+
+  async function handleRemoveClassTeacher(assignment) {
+    const ok = window.confirm(`Remove class teacher for ${assignment.batch} / ${assignment.faculty} / ${assignment.section}?`);
+    if (!ok) return;
+
+    setDeletingClassTeacherId(assignment.id);
+    setError("");
+    setNotice("");
+    try {
+      await api(`/api/class-teacher-assignments/${assignment.id}`, {
+        token,
+        method: "DELETE",
+      });
+      setNotice("Class teacher assignment removed.");
+      await loadAdminData();
+    } catch (e) {
+      setError(e.message || "Unable to remove class teacher assignment");
+    } finally {
+      setDeletingClassTeacherId(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background text-on-surface pb-16">
       <AdminHeader user={user} onLogout={onLogout} />
@@ -258,7 +302,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
         {tab === "dashboard" ? (
           <DashboardSection
             users={users}
-            students={students}
+            students={allStudents}
             analytics={analytics}
             loading={loading}
             onGoStudents={() => setTab("students")}
@@ -272,11 +316,23 @@ export default function AdminWorkspace({ user, token, onLogout }) {
             teachers={teacherUsers}
             subjects={subjects}
             assignments={teacherAssignments}
+            classTeacherAssignments={classTeacherAssignments}
             submitting={submittingTeacher}
             onCreateTeacher={handleCreateTeacher}
             onUpdateTeacher={handleUpdateTeacher}
             onDeleteTeacher={handleDeleteUser}
             deletingUserId={deletingUserId}
+          />
+        ) : null}
+
+        {tab === "class-teachers" ? (
+          <ClassTeachersSection
+            teachers={teacherUsers}
+            assignments={classTeacherAssignments}
+            submitting={submittingTeacher}
+            deletingAssignmentId={deletingClassTeacherId}
+            onAssign={handleAssignClassTeacher}
+            onRemove={handleRemoveClassTeacher}
           />
         ) : null}
 
@@ -301,7 +357,6 @@ export default function AdminWorkspace({ user, token, onLogout }) {
           <AttendanceSummarySection
             loading={loading}
             summary={attendanceSummary}
-            subjects={subjects}
             filter={attendanceFilter}
             onFilterChange={(field, value) => {
               setAttendanceFilter((prev) => {
@@ -311,15 +366,6 @@ export default function AdminWorkspace({ user, token, onLogout }) {
                     ...prev,
                     faculty: value,
                     section: nextSection,
-                    department: value,
-                    subjectId: "",
-                  };
-                }
-                if (field === "department") {
-                  return {
-                    ...prev,
-                    department: value,
-                    subjectId: "",
                   };
                 }
                 return { ...prev, [field]: value };

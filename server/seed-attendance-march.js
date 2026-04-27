@@ -14,44 +14,19 @@ function pickDateSet(dates, presentCount) {
   return new Set(shuffle([...dates]).slice(0, Math.max(0, Math.min(presentCount, dates.length))));
 }
 
-function buildMarchDates(year = new Date().getFullYear()) {
+function buildDateRange(year = new Date().getFullYear()) {
   const dates = [];
-  const endDay = new Date().getMonth() === 2 ? new Date().getDate() : 31;
+  const start = new Date(Date.UTC(year, 2, 1, 0, 0, 0, 0)); // March 1
+  const end = new Date(Date.UTC(year, 3, 15, 0, 0, 0, 0)); // April 15
 
-  for (let day = 1; day <= endDay; day += 1) {
-    const d = new Date(Date.UTC(year, 2, day, 0, 0, 0, 0));
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
     const dow = d.getUTCDay();
     // Monday-Friday
     if (dow >= 1 && dow <= 5) {
-      dates.push(d);
+      dates.push(new Date(d));
     }
   }
   return dates;
-}
-
-function classCombosForAssignment(assignment) {
-  const batches = assignment.batch ? [assignment.batch] : ["ELEVEN", "TWELVE"];
-
-  if (assignment.subject?.faculty === "SCIENCE") {
-    return batches.flatMap((batch) => [
-      { batch, faculty: "SCIENCE", section: "BIO" },
-      { batch, faculty: "SCIENCE", section: "CS" },
-    ]);
-  }
-
-  if (assignment.subject?.faculty === "MANAGEMENT") {
-    return batches.flatMap((batch) => [
-      { batch, faculty: "MANAGEMENT", section: "ECONOMICS" },
-      { batch, faculty: "MANAGEMENT", section: "MARKETING" },
-    ]);
-  }
-
-  return batches.flatMap((batch) => [
-    { batch, faculty: "SCIENCE", section: "BIO" },
-    { batch, faculty: "SCIENCE", section: "CS" },
-    { batch, faculty: "MANAGEMENT", section: "ECONOMICS" },
-    { batch, faculty: "MANAGEMENT", section: "MARKETING" },
-  ]);
 }
 
 function classKey(c) {
@@ -68,32 +43,26 @@ async function run() {
     throw new Error("No students found. Run seed-students first.");
   }
 
-  const teacherAssignments = await prisma.teacherSubjectAssignment.findMany({
-    include: {
-      subject: { select: { id: true, faculty: true } },
-      teacher: { select: { id: true, role: true } },
+  const classTeacherAssignments = await prisma.classTeacherAssignment.findMany({
+    select: {
+      teacherId: true,
+      batch: true,
+      faculty: true,
+      section: true,
     },
   });
 
-  if (teacherAssignments.length === 0) {
-    throw new Error("No teacher-subject assignments found. Run seed-subjects first.");
+  if (classTeacherAssignments.length === 0) {
+    throw new Error("No class-teacher assignments found. Run seed-subjects first.");
   }
 
   const assignmentByClass = new Map();
-  for (const assignment of teacherAssignments) {
-    for (const combo of classCombosForAssignment(assignment)) {
-      const key = classKey(combo);
-      const list = assignmentByClass.get(key) || [];
-      list.push({ teacherId: assignment.teacher.id, subjectId: assignment.subject.id });
-      assignmentByClass.set(key, list);
-    }
+  for (const assignment of classTeacherAssignments) {
+    assignmentByClass.set(classKey(assignment), { teacherId: assignment.teacherId });
   }
 
-  const dates = buildMarchDates();
+  const dates = buildDateRange();
   const totalDays = dates.length;
-  if (totalDays === 0) {
-    throw new Error("No March weekdays available for seeding.");
-  }
 
   await prisma.attendance.deleteMany();
 
@@ -105,12 +74,10 @@ async function run() {
 
   for (const student of students) {
     const key = classKey(student);
-    const options = assignmentByClass.get(key) || [];
-    if (options.length === 0) {
+    const assignment = assignmentByClass.get(key);
+    if (!assignment) {
       throw new Error(`No assignment found for class ${key}`);
     }
-
-    const assignment = options[Math.floor(Math.random() * options.length)];
 
     let presentCount;
     if (fullSet.has(student.id)) {
@@ -132,7 +99,7 @@ async function run() {
         data: {
           studentId: student.id,
           teacherId: assignment.teacherId,
-          subjectId: assignment.subjectId,
+          subjectId: null,
           date,
           present: presentDates.has(date),
         },
@@ -140,7 +107,7 @@ async function run() {
     }
   }
 
-  console.log(`Seeded March attendance for ${students.length} students across ${totalDays} weekdays.`);
+  console.log(`Seeded attendance for ${students.length} students from March 1 to April 15 across ${totalDays} weekdays.`);
   console.log("Distribution rules applied: 3 full, 1 below 20%, 1 below 40%, others mostly above 70%.");
 }
 

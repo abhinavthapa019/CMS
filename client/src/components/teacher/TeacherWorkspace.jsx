@@ -15,6 +15,9 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
   const [students, setStudents] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [classTeacherAssignments, setClassTeacherAssignments] = useState([]);
+  const [attendanceStudents, setAttendanceStudents] = useState([]);
+  const [attendanceTakenDates, setAttendanceTakenDates] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [actionLog, setActionLog] = useState([]);
   const [attendanceCount, setAttendanceCount] = useState(0);
@@ -27,11 +30,15 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
   const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [attendanceMap, setAttendanceMap] = useState({});
-  const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [classFilters, setClassFilters] = useState({
     batch: "ELEVEN",
     faculty: "SCIENCE",
     section: "BIO",
+  });
+  const [attendanceClassFilters, setAttendanceClassFilters] = useState({
+    batch: "",
+    faculty: "",
+    section: "",
   });
 
   const [marksForm, setMarksForm] = useState({
@@ -90,17 +97,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   }, [assignments]);
 
   const classKey = `${classFilters.batch}|${classFilters.faculty}|${classFilters.section}`;
-
-  const allowedSubjectOptions = useMemo(() => {
-    return assignments
-      .filter((a) => {
-        const batchOk = !a.batch || a.batch === classFilters.batch;
-        const facultyOk = !a.subject?.faculty || a.subject.faculty === classFilters.faculty;
-        return batchOk && facultyOk;
-      })
-      .map((a) => a.subject)
-      .filter((subject, idx, arr) => arr.findIndex((s) => s.id === subject.id) === idx);
-  }, [assignments, classFilters.batch, classFilters.faculty]);
+  const attendanceClassKey = `${attendanceClassFilters.batch}|${attendanceClassFilters.faculty}|${attendanceClassFilters.section}`;
 
   function buildClassQuery(filters) {
     const q = new URLSearchParams();
@@ -111,6 +108,38 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     return query ? `?${query}` : "";
   }
 
+  const attendanceClassOptions = useMemo(() => {
+    const map = new Map();
+    for (const row of classTeacherAssignments) {
+      const key = `${row.batch}|${row.faculty}|${row.section}`;
+      const batchLabel = row.batch === "ELEVEN" ? "11" : row.batch === "TWELVE" ? "12" : row.batch;
+      if (!map.has(key)) {
+        map.set(key, {
+          batch: row.batch,
+          faculty: row.faculty,
+          section: row.section,
+          label: `${batchLabel} / ${row.faculty} / ${row.section}`,
+        });
+      }
+    }
+    return [...map.values()];
+  }, [classTeacherAssignments]);
+
+  const hasClassTeacherRole = attendanceClassOptions.length > 0;
+  const isEditingAttendanceDate = useMemo(
+    () => attendanceTakenDates.includes(attendanceDate),
+    [attendanceTakenDates, attendanceDate]
+  );
+
+  const selectedAttendanceAssignment = useMemo(
+    () => classTeacherAssignments.find((row) => (
+      row.batch === attendanceClassFilters.batch
+      && row.faculty === attendanceClassFilters.faculty
+      && row.section === attendanceClassFilters.section
+    )),
+    [classTeacherAssignments, attendanceClassFilters.batch, attendanceClassFilters.faculty, attendanceClassFilters.section]
+  );
+
   const loadStudents = useCallback(async (filters) => {
     if (!token || user?.role !== "TEACHER") return;
 
@@ -118,8 +147,10 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     setError("");
     try {
       const assignmentRes = await api("/api/teacher-subject-assignments", { token });
+      const classTeacherRes = await api("/api/class-teacher-assignments", { token });
 
       setAssignments(assignmentRes.assignments || []);
+      setClassTeacherAssignments(classTeacherRes.assignments || []);
 
       const assignmentRows = assignmentRes.assignments || [];
       const map = new Map();
@@ -151,9 +182,8 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
       }
 
       const query = buildClassQuery(chosen);
-      const subjectQuery = selectedSubjectId ? `${query ? `${query}&` : "?"}subjectId=${selectedSubjectId}` : query;
       const [studentRes, analyticsRes] = await Promise.all([
-        api(`/api/students${subjectQuery}`, { token }),
+        api(`/api/students${query}`, { token }),
         api(`/api/analytics/teacher/${user.id}${query}`, { token }),
       ]);
       setStudents(studentRes.students || []);
@@ -163,7 +193,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     } finally {
       setLoading(false);
     }
-  }, [token, user?.role, user?.id, selectedSubjectId]);
+  }, [token, user?.role, user?.id]);
 
   useEffect(() => {
     loadStudents({
@@ -171,7 +201,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
       faculty: classFilters.faculty,
       section: classFilters.section,
     });
-  }, [loadStudents, classFilters.batch, classFilters.faculty, classFilters.section, selectedSubjectId]);
+  }, [loadStudents, classFilters.batch, classFilters.faculty, classFilters.section]);
 
   useEffect(() => {
     if (allowedClassOptions.length === 0) return;
@@ -183,26 +213,69 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   }, [allowedClassOptions, classKey]);
 
   useEffect(() => {
-    if (allowedSubjectOptions.length === 0) {
-      setSelectedSubjectId("");
+    if (attendanceClassOptions.length === 0) {
+      setAttendanceClassFilters({ batch: "", faculty: "", section: "" });
+      setAttendanceStudents([]);
+      setAttendanceTakenDates([]);
       return;
     }
-    const exists = allowedSubjectOptions.some((s) => String(s.id) === String(selectedSubjectId));
+
+    const exists = attendanceClassOptions.some((opt) => `${opt.batch}|${opt.faculty}|${opt.section}` === attendanceClassKey);
     if (!exists) {
-      setSelectedSubjectId(String(allowedSubjectOptions[0].id));
+      const first = attendanceClassOptions[0];
+      setAttendanceClassFilters({ batch: first.batch, faculty: first.faculty, section: first.section });
     }
-  }, [allowedSubjectOptions, selectedSubjectId]);
+  }, [attendanceClassOptions, attendanceClassKey]);
 
   useEffect(() => {
-    if (students.length === 0) return;
-    setAttendanceMap((prev) => {
-      const next = {};
-      students.forEach((s) => {
-        next[s.id] = prev[s.id] ?? true;
+    if (!hasClassTeacherRole && tab === "attendance") {
+      setTab("dashboard");
+    }
+  }, [hasClassTeacherRole, tab]);
+
+  const loadAttendanceStudents = useCallback(async (filters) => {
+    if (!token || user?.role !== "TEACHER") return;
+    if (!filters.batch || !filters.faculty || !filters.section) {
+      setAttendanceStudents([]);
+      setAttendanceTakenDates([]);
+      return;
+    }
+
+    try {
+      const query = buildClassQuery(filters);
+      const queryWithDate = new URLSearchParams({
+        batch: filters.batch,
+        faculty: filters.faculty,
+        section: filters.section,
+        date: attendanceDate,
+      }).toString();
+
+      const [studentsRes, datesRes, classAttendanceRes] = await Promise.all([
+        api(`/api/students${query}`, { token }),
+        api(`/api/attendance/class-dates${query}`, { token }),
+        api(`/api/attendance/class?${queryWithDate}`, { token }),
+      ]);
+
+      const rows = studentsRes.students || [];
+      const existing = classAttendanceRes.attendance || [];
+
+      setAttendanceStudents(rows);
+      setAttendanceTakenDates(datesRes.dates || []);
+
+      const existingByStudent = new Map(existing.map((row) => [row.studentId, row.present]));
+      const nextMap = {};
+      rows.forEach((student) => {
+        nextMap[student.id] = existingByStudent.has(student.id) ? existingByStudent.get(student.id) : true;
       });
-      return next;
-    });
-  }, [students]);
+      setAttendanceMap(nextMap);
+    } catch (e) {
+      setError(e.message || "Failed to load attendance students.");
+    }
+  }, [token, user?.role, attendanceDate]);
+
+  useEffect(() => {
+    loadAttendanceStudents(attendanceClassFilters);
+  }, [loadAttendanceStudents, attendanceClassFilters.batch, attendanceClassFilters.faculty, attendanceClassFilters.section, attendanceDate]);
 
   function logAction(kind, title, meta) {
     setActionLog((prev) => [{ kind, title, meta }, ...prev].slice(0, 8));
@@ -221,17 +294,16 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     try {
       const isoDate = new Date(`${attendanceDate}T00:00:00.000Z`).toISOString();
       const results = await Promise.allSettled(
-        students.map((s) =>
+        attendanceStudents.map((s) =>
           api(`/api/students/${s.id}/attendance`, {
             token,
             method: "POST",
             body: {
               present: attendanceMap[s.id] ?? true,
               date: isoDate,
-              batch: classFilters.batch || undefined,
-              faculty: classFilters.faculty || undefined,
-              section: classFilters.section || undefined,
-              subjectId: selectedSubjectId ? Number(selectedSubjectId) : undefined,
+              batch: attendanceClassFilters.batch || undefined,
+              faculty: attendanceClassFilters.faculty || undefined,
+              section: attendanceClassFilters.section || undefined,
             },
           })
         )
@@ -245,13 +317,17 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
       }
 
       if (failCount === 0) {
-        setNotice(`Attendance saved for ${successCount} students.`);
+        setNotice(
+          isEditingAttendanceDate
+            ? `Attendance updated for ${successCount} students.`
+            : `Attendance saved for ${successCount} students.`
+        );
       } else {
-        setNotice(`Saved ${successCount} students. ${failCount} failed (possibly already marked for this date).`);
+        setNotice(`Saved ${successCount} students. ${failCount} failed.`);
       }
 
       logAction("attendance", "Class attendance submitted", `${attendanceDate} - ${successCount} saved`);
-      await loadStudents(classFilters);
+      await loadAttendanceStudents(attendanceClassFilters);
     } catch (e) {
       setError(e.message || "Failed to record attendance.");
     } finally {
@@ -391,7 +467,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
       <TeacherHeader user={user} onLogout={onLogout} />
 
       <main className="max-w-6xl mx-auto px-5 py-6 space-y-6">
-        <TeacherTabs tab={tab} onChange={setTab} onRefresh={loadStudents} />
+        <TeacherTabs tab={tab} onChange={setTab} onRefresh={loadStudents} showAttendance={hasClassTeacherRole} />
 
         {error ? <p className="text-sm text-error bg-error-container px-4 py-2 rounded-lg">{error}</p> : null}
         {notice ? <p className="text-sm text-on-secondary-container bg-secondary-container px-4 py-2 rounded-lg">{notice}</p> : null}
@@ -402,23 +478,24 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
         {tab === "attendance" ? (
           <AttendanceSection
-            students={students}
-            subjects={allowedSubjectOptions}
-            classOptions={allowedClassOptions}
-            classFilters={classFilters}
+            students={attendanceStudents}
+            classOptions={attendanceClassOptions}
+            classFilters={attendanceClassFilters}
+            classTeacherName={selectedAttendanceAssignment?.teacher?.name || user?.name}
             onFilterChange={(field, value) => {
               if (field === "classKey") {
                 const [batch, faculty, section] = value.split("|");
-                setClassFilters({ batch, faculty, section });
+                setAttendanceClassFilters({ batch, faculty, section });
                 return;
               }
-              setClassFilters((prev) => ({ ...prev, [field]: value }));
+              setAttendanceClassFilters((prev) => ({ ...prev, [field]: value }));
             }}
-            selectedSubjectId={selectedSubjectId}
-            onSubjectChange={setSelectedSubjectId}
             attendanceDate={attendanceDate}
             attendanceMap={attendanceMap}
             onDateChange={setAttendanceDate}
+            takenDates={attendanceTakenDates}
+            isEditingExisting={isEditingAttendanceDate}
+            onPickTakenDate={setAttendanceDate}
             onToggleStudent={(studentId, checked) =>
               setAttendanceMap((prev) => ({
                 ...prev,
@@ -427,7 +504,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
             }
             onToggleAll={(checked) => {
               const all = {};
-              students.forEach((s) => {
+              attendanceStudents.forEach((s) => {
                 all[s.id] = checked;
               });
               setAttendanceMap(all);
