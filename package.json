@@ -1,0 +1,11 @@
+{
+  "name": "cms-root",
+  "private": true,
+  "scripts": {
+    "dev": "node -e \"console.log('Run in two terminals:'); console.log('  1) npm run dev:server'); console.log('  2) npm run dev:client'); console.log('Or run from folders:'); console.log('  cd server && npm run dev'); console.log('  cd client && npm run dev');\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "seed": "npm --prefix server run seed:all"
+  }
+}

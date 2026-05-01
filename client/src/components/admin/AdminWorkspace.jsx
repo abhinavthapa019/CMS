@@ -7,6 +7,7 @@ import ClassTeachersSection from "./ClassTeachersSection";
 import DashboardSection from "./DashboardSection";
 import StudentsSection from "./StudentsSection";
 import TeachersSection from "./TeachersSection";
+import NoticesSection from "./NoticesSection";
 
 export default function AdminWorkspace({ user, token, onLogout }) {
   const [tab, setTab] = useState("dashboard");
@@ -34,6 +35,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   const [attendanceSummary, setAttendanceSummary] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [studentSearch, setStudentSearch] = useState("");
+  
 
   const [studentForm, setStudentForm] = useState({
     firstName: "",
@@ -126,6 +128,15 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     if (!q) return students;
     return students.filter((s) => (`${s.firstName} ${s.lastName} ${s.rollNumber}`).toLowerCase().includes(q));
   }, [students, studentSearch]);
+
+  const filteredAllStudents = useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+    if (!q) return allStudents;
+    return allStudents.filter((s) => {
+      const hay = `${s.firstName} ${s.lastName} ${s.rollNumber} ${s.user?.email || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [allStudents, studentSearch]);
 
   async function handleCreateTeacher(payload) {
     setSubmittingTeacher(true);
@@ -339,6 +350,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
         {tab === "students" ? (
           <StudentsSection
             loading={loading}
+            allStudents={filteredAllStudents}
             students={filteredStudents}
             classFilter={classFilter}
             onClassFilterChange={(field, value) => setClassFilter((prev) => ({ ...prev, [field]: value }))}
@@ -372,6 +384,9 @@ export default function AdminWorkspace({ user, token, onLogout }) {
               });
             }}
           />
+        ) : null}
+        {tab === "notices" ? (
+          <NoticesSection token={token} users={users} students={allStudents} onCreated={loadAdminData} />
         ) : null}
       </main>
     </div>

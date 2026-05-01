@@ -190,9 +190,21 @@ router.delete("/api/users/:id", requireAuth(Role.ADMIN), async (req, res) => {
   }
 
   try {
+    const createdAssignments = await prisma.assignment.findMany({
+      where: { createdById: userId },
+      select: { id: true },
+    });
+    const assignmentIds = createdAssignments.map((a) => a.id);
+
     await prisma.$transaction([
       prisma.classTeacherAssignment.deleteMany({ where: { teacherId: userId } }),
       prisma.teacherSubjectAssignment.deleteMany({ where: { teacherId: userId } }),
+      prisma.noticeRecipient.deleteMany({ where: { userId } }),
+      prisma.notice.deleteMany({ where: { authorId: userId } }),
+      prisma.assignmentSubmission.deleteMany({
+        where: assignmentIds.length > 0 ? { assignmentId: { in: assignmentIds } } : { assignmentId: -1 },
+      }),
+      prisma.assignment.deleteMany({ where: { createdById: userId } }),
       prisma.attendance.deleteMany({ where: { teacherId: userId } }),
       prisma.mark.deleteMany({ where: { teacherId: userId } }),
       prisma.user.delete({ where: { id: userId } }),

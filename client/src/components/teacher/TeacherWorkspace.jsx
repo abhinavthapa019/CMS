@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import AttendanceSection from "./AttendanceSection";
+import AssignmentsSection from "./AssignmentsSection";
 import MarksSection from "./MarksSection";
+import NoticesSection from "./NoticesSection";
 import PredictionSection from "./PredictionSection";
 import TeacherDashboardSection from "./TeacherDashboardSection";
 import TeacherHeader from "./TeacherHeader";
@@ -12,6 +14,9 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const [notices, setNotices] = useState([]);
+  const [loadingNotices, setLoadingNotices] = useState(false);
 
   const [students, setStudents] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -125,6 +130,20 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     return [...map.values()];
   }, [classTeacherAssignments]);
 
+  const assignmentClassOptions = useMemo(() => {
+    const map = new Map();
+    for (const opt of allowedClassOptions) {
+      map.set(`${opt.batch}|${opt.faculty}|${opt.section}`, opt);
+    }
+    for (const opt of attendanceClassOptions) {
+      const key = `${opt.batch}|${opt.faculty}|${opt.section}`;
+      if (!map.has(key)) {
+        map.set(key, opt);
+      }
+    }
+    return [...map.values()];
+  }, [allowedClassOptions, attendanceClassOptions]);
+
   const hasClassTeacherRole = attendanceClassOptions.length > 0;
   const isEditingAttendanceDate = useMemo(
     () => attendanceTakenDates.includes(attendanceDate),
@@ -195,6 +214,19 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     }
   }, [token, user?.role, user?.id]);
 
+  const loadNotices = useCallback(async () => {
+    if (!token) return;
+    setLoadingNotices(true);
+    try {
+      const res = await api("/api/notices", { token });
+      setNotices(res.notices || []);
+    } catch (e) {
+      setError(e.message || "Failed to load notices.");
+    } finally {
+      setLoadingNotices(false);
+    }
+  }, [token]);
+
   useEffect(() => {
     loadStudents({
       batch: classFilters.batch,
@@ -202,6 +234,25 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
       section: classFilters.section,
     });
   }, [loadStudents, classFilters.batch, classFilters.faculty, classFilters.section]);
+
+  useEffect(() => {
+    loadNotices();
+  }, [loadNotices]);
+
+  useEffect(() => {
+    if (tab === "notices") {
+      loadNotices();
+    }
+  }, [tab, loadNotices]);
+
+  async function markNoticeRead(id) {
+    try {
+      await api(`/api/notices/${id}/read`, { token, method: "POST" });
+      setNotices((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    } catch (e) {
+      setError(e.message || "Failed to mark notice as read.");
+    }
+  }
 
   useEffect(() => {
     if (allowedClassOptions.length === 0) return;
@@ -476,6 +527,16 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
         {tab === "dashboard" ? <TeacherDashboardSection students={students} actions={actionSummary} analytics={analytics} /> : null}
 
+        {tab === "notices" ? (
+          <NoticesSection
+            notices={notices}
+            loading={loadingNotices}
+            error={error}
+            onRefresh={loadNotices}
+            onMarkRead={markNoticeRead}
+          />
+        ) : null}
+
         {tab === "attendance" ? (
           <AttendanceSection
             students={attendanceStudents}
@@ -512,6 +573,10 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
             onSubmit={handleAttendanceSubmit}
             submitting={submittingAttendance}
           />
+        ) : null}
+
+        {tab === "assignments" ? (
+          <AssignmentsSection token={token} classOptions={assignmentClassOptions} />
         ) : null}
 
         {tab === "marks" ? (

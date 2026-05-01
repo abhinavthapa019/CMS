@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "postinstall": "prisma generate",
+    "postinstall": "node scripts/postinstall.js",
+    "prisma:generate": "prisma generate",
+    "seed:admin": "node seed-admin.js",
+    "seed:all": "npm run seed:admin && npm run seed:subjects && npm run seed:teachers && npm run seed:students && npm run seed:attendance:march",
     "seed:teachers": "node seed-teachers.js",
     "seed:students": "node seed-students.js",
     "seed:subjects": "node seed-subjects.js",
@@ -24,6 +27,7 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
     "prisma": "^6.14.0",
     "zod": "^3.23.8"
   },

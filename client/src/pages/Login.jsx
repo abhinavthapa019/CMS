@@ -2,6 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../state/useAuth.jsx";
 
+function routeForRole(role) {
+  if (role === "ADMIN") return "/admin";
+  if (role === "TEACHER") return "/teacher";
+  if (role === "STUDENT") return "/student";
+  return "/login";
+}
+
 export default function Login() {
   const { login, token, user } = useAuth();
   const navigate = useNavigate();
@@ -13,8 +20,7 @@ export default function Login() {
 
   useEffect(() => {
     if (!token || !user) return;
-    if (user.role === "ADMIN") navigate("/admin", { replace: true });
-    if (user.role === "TEACHER") navigate("/teacher", { replace: true });
+    navigate(routeForRole(user.role), { replace: true });
   }, [token, user, navigate]);
 
   const onSubmit = async (e) => {
@@ -24,9 +30,7 @@ export default function Login() {
     try {
       const res = await login(email, password);
       const role = res?.user?.role;
-      if (role === "ADMIN") navigate("/admin", { replace: true });
-      else if (role === "TEACHER") navigate("/teacher", { replace: true });
-      else navigate("/login", { replace: true });
+      navigate(routeForRole(role), { replace: true });
     } catch (e) {
       setErr(e.message || "Login failed");
     } finally {
@@ -60,6 +64,9 @@ export default function Login() {
                 <span className="material-symbols-outlined text-[18px] text-primary">login</span>
                 <span>Sign in to continue</span>
               </div>
+              <p className="mt-3 text-xs text-secondary">
+                Student demo password: <strong>student123</strong>. Email format: <strong>firstname.lastname1@students.local</strong>
+              </p>
             </div>
             <form className="space-y-6" onSubmit={onSubmit}>
               <div className="space-y-2">

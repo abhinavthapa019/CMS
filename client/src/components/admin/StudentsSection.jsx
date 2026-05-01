@@ -3,6 +3,7 @@ import Field from "./Field";
 
 export default function StudentsSection({
   loading,
+  allStudents,
   students,
   classFilter,
   onClassFilterChange,
@@ -17,6 +18,7 @@ export default function StudentsSection({
 }) {
   const classSelected = classFilter.batch && classFilter.faculty && classFilter.section;
   const displayBatch = (batch) => (batch === "ELEVEN" ? "11" : batch === "TWELVE" ? "12" : batch);
+  const renderEmail = (s) => s?.user?.email || "—";
 
   return (
     <section className="grid lg:grid-cols-5 gap-4">
@@ -168,7 +170,47 @@ export default function StudentsSection({
         </div>
 
         {!classSelected ? (
-          <p className="text-sm text-secondary">Choose batch, faculty, and section to view students.</p>
+          <div className="space-y-3">
+            <p className="text-sm text-secondary">
+              No class selected — showing all students (use filters above to narrow to a class).
+            </p>
+
+            {loading ? (
+              <p className="text-sm text-secondary">Loading...</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-secondary border-b border-outline-variant/20">
+                    <th className="py-2 font-semibold">Name</th>
+                    <th className="py-2 font-semibold">Email</th>
+                    <th className="py-2 font-semibold">Roll</th>
+                    <th className="py-2 font-semibold">Class</th>
+                    <th className="py-2 font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(allStudents || []).map((s) => (
+                    <tr key={s.id} className="border-b border-outline-variant/10">
+                      <td className="py-2 font-medium">{s.firstName} {s.lastName}</td>
+                      <td className="py-2 text-secondary">{renderEmail(s)}</td>
+                      <td className="py-2 text-secondary">{s.rollNumber}</td>
+                      <td className="py-2 text-secondary">{displayBatch(s.batch)} / {s.faculty} / {s.section}</td>
+                      <td className="py-2">
+                        <button
+                          type="button"
+                          onClick={() => onDeleteStudent(s)}
+                          disabled={deletingStudentId === s.id}
+                          className="px-3 py-1 rounded-md text-xs font-semibold bg-error-container text-error disabled:opacity-60"
+                        >
+                          {deletingStudentId === s.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         ) : null}
 
         {loading ? (
@@ -178,6 +220,7 @@ export default function StudentsSection({
             <thead>
               <tr className="text-left text-secondary border-b border-outline-variant/20">
                 <th className="py-2 font-semibold">Name</th>
+                <th className="py-2 font-semibold">Email</th>
                 <th className="py-2 font-semibold">Roll</th>
                 <th className="py-2 font-semibold">Class</th>
                 <th className="py-2 font-semibold">Mother Job</th>
@@ -190,6 +233,7 @@ export default function StudentsSection({
               {students.map((s) => (
                 <tr key={s.id} className="border-b border-outline-variant/10">
                   <td className="py-2 font-medium">{s.firstName} {s.lastName}</td>
+                  <td className="py-2 text-secondary">{renderEmail(s)}</td>
                   <td className="py-2 text-secondary">{s.rollNumber}</td>
                   <td className="py-2 text-secondary">{displayBatch(s.batch)} / {s.faculty} / {s.section}</td>
                   <td className="py-2 text-secondary">{s.motherJob}</td>

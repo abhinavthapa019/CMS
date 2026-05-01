@@ -9,7 +9,9 @@ datasource db {
 enum Role {
   ADMIN
   TEACHER
+  STUDENT
 }
+
 
 enum Job {
   teacher
@@ -45,6 +47,10 @@ model User {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  studentProfile Student?
+  noticesAuthored Notice[]
+  noticeRecipients NoticeRecipient[]
+  createdAssignments Assignment[]
   attendance Attendance[]
   marks      Mark[]
   subjectAssignments TeacherSubjectAssignment[]
@@ -65,12 +71,45 @@ model Student {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  user       User?     @relation(fields: [userId], references: [id])
+  userId     Int?      @unique
+
   attendance Attendance[]
   marks      Mark[]
   predictions Prediction[]
+  assignmentSubmissions AssignmentSubmission[]
 
   @@index([batch, faculty, section])
   @@unique([batch, faculty, section, rollNumber])
+}
+
+model Notice {
+  id        Int      @id @default(autoincrement())
+  title     String
+  body      String
+  scope     String   // ALL | CLASS | INDIVIDUAL
+  batch     AcademicBatch?
+  faculty   Faculty?
+  section   Section?
+  authorId  Int
+  createdAt DateTime @default(now())
+
+  author    User     @relation(fields: [authorId], references: [id])
+  recipients NoticeRecipient[]
+}
+
+model NoticeRecipient {
+  id        Int      @id @default(autoincrement())
+  noticeId  Int
+  userId    Int
+  read      Boolean  @default(false)
+  readAt    DateTime?
+
+  notice    Notice   @relation(fields: [noticeId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([noticeId, userId])
+  @@index([userId])
 }
 
 model Subject {
@@ -166,5 +205,43 @@ model Prediction {
   student   Student  @relation(fields: [studentId], references: [id])
   studentId Int
 
+  @@index([studentId])
+}
+
+model Assignment {
+  id            Int                 @id @default(autoincrement())
+  title         String
+  description   String?
+  dueDate       DateTime?
+  batch         AcademicBatch
+  faculty       Faculty
+  section       Section
+  attachmentUrl String?
+  attachmentName String?
+  createdById   Int
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  createdBy     User                @relation(fields: [createdById], references: [id])
+  submissions   AssignmentSubmission[]
+
+  @@index([batch, faculty, section])
+  @@index([createdById])
+}
+
+model AssignmentSubmission {
+  id            Int        @id @default(autoincrement())
+  assignmentId  Int
+  studentId     Int
+  note          String?
+  attachmentUrl String?
+  attachmentName String?
+  submittedAt   DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  assignment    Assignment @relation(fields: [assignmentId], references: [id])
+  student       Student    @relation(fields: [studentId], references: [id])
+
+  @@unique([assignmentId, studentId])
   @@index([studentId])
 }

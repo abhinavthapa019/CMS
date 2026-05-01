@@ -180,6 +180,20 @@ router.get("/api/students", requireAuth(), async (req, res) => {
   const students = await prisma.student.findMany({
     where,
     orderBy: [{ batch: "asc" }, { faculty: "asc" }, { section: "asc" }, { rollNumber: "asc" }],
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      rollNumber: true,
+      batch: true,
+      faculty: true,
+      section: true,
+      motherJob: true,
+      fatherJob: true,
+      travelTime: true,
+      userId: true,
+      user: { select: { email: true } },
+    },
   });
   return res.json({ ok: true, students });
 });
@@ -359,6 +373,7 @@ router.delete("/api/students/:id", requireAuth(Role.ADMIN), async (req, res) => 
 
   try {
     await prisma.$transaction([
+      prisma.assignmentSubmission.deleteMany({ where: { studentId } }),
       prisma.attendance.deleteMany({ where: { studentId } }),
       prisma.mark.deleteMany({ where: { studentId } }),
       prisma.prediction.deleteMany({ where: { studentId } }),
