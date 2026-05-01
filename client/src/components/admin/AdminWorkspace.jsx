@@ -8,6 +8,7 @@ import DashboardSection from "./DashboardSection";
 import StudentsSection from "./StudentsSection";
 import TeachersSection from "./TeachersSection";
 import NoticesSection from "./NoticesSection";
+import PredictionsSection from "./PredictionsSection";
 
 export default function AdminWorkspace({ user, token, onLogout }) {
   const [tab, setTab] = useState("dashboard");
@@ -387,6 +388,10 @@ export default function AdminWorkspace({ user, token, onLogout }) {
         ) : null}
         {tab === "notices" ? (
           <NoticesSection token={token} users={users} students={allStudents} onCreated={loadAdminData} />
+        ) : null}
+
+        {tab === "predictions" ? (
+          <PredictionsSection token={token} />
         ) : null}
       </main>
     </div>

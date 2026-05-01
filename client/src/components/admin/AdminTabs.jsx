@@ -5,6 +5,7 @@ const TABS = [
   { id: "notices", label: "Notices" },
   { id: "class-teachers", label: "Class Teachers" },
   { id: "attendance", label: "Attendance" },
+  { id: "predictions", label: "Predictions" },
 ];
 
 export default function AdminTabs({ tab, onChange, onRefresh }) {

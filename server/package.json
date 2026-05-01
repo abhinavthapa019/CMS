@@ -9,12 +9,14 @@
     "postinstall": "node scripts/postinstall.js",
     "prisma:generate": "prisma generate",
     "seed:admin": "node seed-admin.js",
-    "seed:all": "npm run seed:admin && npm run seed:subjects && npm run seed:teachers && npm run seed:students && npm run seed:attendance:march",
+    "seed:all": "npm run seed:admin && npm run seed:subjects && npm run seed:teachers && npm run seed:students && npm run seed:marks && npm run seed:attendance:march && npm run seed:predictions",
     "seed:teachers": "node seed-teachers.js",
     "seed:students": "node seed-students.js",
     "seed:subjects": "node seed-subjects.js",
+    "seed:marks": "node seed-marks.js",
     "seed:attendance": "node seed-attendance-march.js",
-    "seed:attendance:march": "node seed-attendance-march.js"
+    "seed:attendance:march": "node seed-attendance-march.js",
+    "seed:predictions": "node seed-predictions.js"
   },
   "keywords": [],
   "author": "",

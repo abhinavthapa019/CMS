@@ -1,0 +1,9 @@
+# Recommended: Python 3.11 or 3.12 (Windows wheels are widely available).
+# If you're on Python 3.13/3.14 and installs fail, switch Python version or use conda.
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+scikit-learn>=1.4
+pandas>=2.2
+numpy>=1.26
+joblib>=1.4
