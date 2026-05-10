@@ -15,7 +15,24 @@ import {
   YAxis,
 } from "recharts";
 
-const PIE_COLORS = ["#15803d", "#b91c1c"];
+const CHART_COLORS = {
+  present: "var(--color-primary)",
+  absent: "var(--color-error)",
+  neutral: "var(--color-outline-variant)",
+  surface: "var(--color-surface-container-lowest)",
+  surfaceBorder: "var(--color-outline-variant)",
+  text: "var(--color-on-surface)",
+  textSecondary: "var(--color-secondary)",
+};
+
+const PIE_COLORS = [CHART_COLORS.present, CHART_COLORS.absent];
+
+function formatShortDateTick(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 function piePercentLabel({ percent }) {
   return `${Math.round((percent || 0) * 100)}%`;
@@ -23,7 +40,8 @@ function piePercentLabel({ percent }) {
 
 function prettyClass(item) {
   const batch = item.batch === "ELEVEN" ? "11" : item.batch === "TWELVE" ? "12" : item.batch;
-  return `${batch}-${item.faculty}-${item.section}`;
+  const faculty = item.faculty === "SCIENCE" ? "SCI" : item.faculty === "MANAGEMENT" ? "MGT" : item.faculty;
+  return `${batch}-${faculty}-${item.section}`;
 }
 
 export default function DashboardSection({ users, students, analytics, loading, onGoStudents, onGoTeachers }) {
@@ -84,14 +102,45 @@ export default function DashboardSection({ users, students, analytics, loading, 
           <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Global Daily Attendance Trend ({periodLabel})</h3>
           <div className="w-full h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="present" stroke="#2563eb" strokeWidth={2} />
-                <Line type="monotone" dataKey="absent" stroke="#dc2626" strokeWidth={2} />
+              <LineChart data={trend} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke={CHART_COLORS.neutral} strokeDasharray="3 3" opacity={0.35} />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={formatShortDateTick}
+                  minTickGap={24}
+                  tick={{ fill: CHART_COLORS.textSecondary, fontSize: 12 }}
+                  axisLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                  tickLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: CHART_COLORS.textSecondary, fontSize: 12 }}
+                  axisLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                  tickLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                />
+                <Tooltip
+                  formatter={(value, name) => [value, name === "present" ? "Present" : "Absent"]}
+                  contentStyle={{ backgroundColor: CHART_COLORS.surface, borderColor: CHART_COLORS.surfaceBorder, color: CHART_COLORS.text, borderRadius: 12 }}
+                  itemStyle={{ color: CHART_COLORS.text }}
+                  labelStyle={{ color: CHART_COLORS.textSecondary }}
+                />
+                <Legend wrapperStyle={{ color: CHART_COLORS.textSecondary, fontSize: 12 }} />
+                <Line
+                  type="monotone"
+                  dataKey="present"
+                  name="Present"
+                  stroke={CHART_COLORS.present}
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="absent"
+                  name="Absent"
+                  stroke={CHART_COLORS.absent}
+                  strokeWidth={2}
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -102,13 +151,25 @@ export default function DashboardSection({ users, students, analytics, loading, 
           <div className="w-full h-72">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={distribution} dataKey="value" nameKey="name" outerRadius={90} label={piePercentLabel}>
+                <Pie
+                  data={distribution}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={48}
+                  outerRadius={90}
+                  label={piePercentLabel}
+                  labelLine={false}
+                >
                   {distribution.map((entry, index) => (
                     <Cell key={`${entry.name}-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
-                <Legend />
+                <Tooltip
+                  contentStyle={{ backgroundColor: CHART_COLORS.surface, borderColor: CHART_COLORS.surfaceBorder, color: CHART_COLORS.text, borderRadius: 12 }}
+                  itemStyle={{ color: CHART_COLORS.text }}
+                  labelStyle={{ color: CHART_COLORS.textSecondary }}
+                />
+                <Legend wrapperStyle={{ color: CHART_COLORS.textSecondary, fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -119,14 +180,37 @@ export default function DashboardSection({ users, students, analytics, loading, 
         <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Class-wise Daily Attendance ({periodLabel})</h3>
         <div className="w-full h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={classDaily.map((item) => ({ ...item, classLabel: prettyClass(item) }))}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="classLabel" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="presentToday" fill="#2563eb" name="Present Today" />
-              <Bar dataKey="totalStudents" fill="#94a3b8" name="Total Students" />
+            <BarChart
+              data={classDaily.map((item) => ({ ...item, classLabel: prettyClass(item) }))}
+              margin={{ top: 10, right: 12, left: 0, bottom: 26 }}
+              barGap={6}
+              barCategoryGap={18}
+            >
+              <CartesianGrid stroke={CHART_COLORS.neutral} strokeDasharray="3 3" opacity={0.35} />
+              <XAxis
+                dataKey="classLabel"
+                interval={0}
+                angle={-25}
+                height={44}
+                textAnchor="end"
+                tick={{ fill: CHART_COLORS.textSecondary, fontSize: 12 }}
+                axisLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                tickLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fill: CHART_COLORS.textSecondary, fontSize: 12 }}
+                axisLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                tickLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+              />
+              <Tooltip
+                contentStyle={{ backgroundColor: CHART_COLORS.surface, borderColor: CHART_COLORS.surfaceBorder, color: CHART_COLORS.text, borderRadius: 12 }}
+                itemStyle={{ color: CHART_COLORS.text }}
+                labelStyle={{ color: CHART_COLORS.textSecondary }}
+              />
+              <Legend wrapperStyle={{ color: CHART_COLORS.textSecondary, fontSize: 12 }} />
+              <Bar dataKey="presentToday" fill={CHART_COLORS.present} name="Present" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="totalStudents" fill={CHART_COLORS.neutral} name="Total" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

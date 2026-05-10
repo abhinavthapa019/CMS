@@ -14,6 +14,27 @@ import {
   YAxis,
 } from "recharts";
 
+const CHART_COLORS = {
+  present: "var(--color-primary)",
+  absent: "var(--color-error)",
+  neutral: "var(--color-outline-variant)",
+  surface: "var(--color-surface-container-lowest)",
+  surfaceBorder: "var(--color-outline-variant)",
+  text: "var(--color-on-surface)",
+  textSecondary: "var(--color-secondary)",
+};
+
+function formatShortDateTick(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function piePercentLabel({ percent }) {
+  return `${Math.round((percent || 0) * 100)}%`;
+}
+
 function TeacherStat({ label, value, icon, tone = "primary" }) {
   const toneMap = {
     primary: "bg-primary-fixed text-primary",
@@ -34,7 +55,7 @@ function TeacherStat({ label, value, icon, tone = "primary" }) {
   );
 }
 
-const PIE_COLORS = ["#15803d", "#b91c1c"];
+const PIE_COLORS = [CHART_COLORS.present, CHART_COLORS.absent];
 
 export default function TeacherDashboardSection({ students, actions, analytics }) {
   const periodLabel = analytics?.periodLabel || "Current Month";
@@ -66,14 +87,45 @@ export default function TeacherDashboardSection({ students, actions, analytics }
           <h3 className="font-headline font-bold text-lg text-on-surface mb-4">Attendance Trend ({periodLabel})</h3>
           <div className="w-full h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="present" stroke="#2563eb" strokeWidth={2} />
-                <Line type="monotone" dataKey="absent" stroke="#dc2626" strokeWidth={2} />
+              <LineChart data={trend} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke={CHART_COLORS.neutral} strokeDasharray="3 3" opacity={0.35} />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={formatShortDateTick}
+                  minTickGap={24}
+                  tick={{ fill: CHART_COLORS.textSecondary, fontSize: 12 }}
+                  axisLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                  tickLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: CHART_COLORS.textSecondary, fontSize: 12 }}
+                  axisLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                  tickLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                />
+                <Tooltip
+                  formatter={(value, name) => [value, name === "present" ? "Present" : "Absent"]}
+                  contentStyle={{ backgroundColor: CHART_COLORS.surface, borderColor: CHART_COLORS.surfaceBorder, color: CHART_COLORS.text, borderRadius: 12 }}
+                  itemStyle={{ color: CHART_COLORS.text }}
+                  labelStyle={{ color: CHART_COLORS.textSecondary }}
+                />
+                <Legend wrapperStyle={{ color: CHART_COLORS.textSecondary, fontSize: 12 }} />
+                <Line
+                  type="monotone"
+                  dataKey="present"
+                  name="Present"
+                  stroke={CHART_COLORS.present}
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="absent"
+                  name="Absent"
+                  stroke={CHART_COLORS.absent}
+                  strokeWidth={2}
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -84,13 +136,25 @@ export default function TeacherDashboardSection({ students, actions, analytics }
           <div className="w-full h-72">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={distribution} dataKey="value" nameKey="name" outerRadius={90} label>
+                <Pie
+                  data={distribution}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={48}
+                  outerRadius={90}
+                  label={piePercentLabel}
+                  labelLine={false}
+                >
                   {distribution.map((entry, index) => (
                     <Cell key={`${entry.name}-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
-                <Legend />
+                <Tooltip
+                  contentStyle={{ backgroundColor: CHART_COLORS.surface, borderColor: CHART_COLORS.surfaceBorder, color: CHART_COLORS.text, borderRadius: 12 }}
+                  itemStyle={{ color: CHART_COLORS.text }}
+                  labelStyle={{ color: CHART_COLORS.textSecondary }}
+                />
+                <Legend wrapperStyle={{ color: CHART_COLORS.textSecondary, fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -106,13 +170,26 @@ export default function TeacherDashboardSection({ students, actions, analytics }
                 name: row.name,
                 attendancePercent: row.attendancePercent,
               }))}
+              margin={{ top: 10, right: 12, left: 0, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" />
+              <CartesianGrid stroke={CHART_COLORS.neutral} strokeDasharray="3 3" opacity={0.35} />
               <XAxis dataKey="name" hide />
-              <YAxis domain={[0, 100]} />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="attendancePercent" name="Attendance %" fill="#2563eb" />
+              <YAxis
+                domain={[0, 100]}
+                tickFormatter={(v) => `${v}%`}
+                tick={{ fill: CHART_COLORS.textSecondary, fontSize: 12 }}
+                axisLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                tickLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+              />
+              <Tooltip
+                formatter={(value) => [`${value}%`, "Attendance"]}
+                labelFormatter={(label) => `Student: ${label}`}
+                contentStyle={{ backgroundColor: CHART_COLORS.surface, borderColor: CHART_COLORS.surfaceBorder, color: CHART_COLORS.text, borderRadius: 12 }}
+                itemStyle={{ color: CHART_COLORS.text }}
+                labelStyle={{ color: CHART_COLORS.textSecondary }}
+              />
+              <Legend wrapperStyle={{ color: CHART_COLORS.textSecondary, fontSize: 12 }} />
+              <Bar dataKey="attendancePercent" name="Attendance %" fill={CHART_COLORS.present} radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 function parseYmd(ymd) {
   if (!ymd) return new Date();
@@ -44,11 +44,6 @@ export default function AttendanceSection({
 
   const takenSet = useMemo(() => new Set(takenDates || []), [takenDates]);
 
-  useEffect(() => {
-    const selected = parseYmd(attendanceDate);
-    setVisibleMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
-  }, [attendanceDate]);
-
   const calendarCells = useMemo(() => {
     const year = visibleMonth.getFullYear();
     const month = visibleMonth.getMonth();
@@ -77,6 +72,9 @@ export default function AttendanceSection({
   function pickDate(date) {
     const ymd = toYmd(date);
     if (ymd > today) return;
+
+    setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+
     if (onPickTakenDate) {
       onPickTakenDate(ymd);
       setShowCalendar(false);
