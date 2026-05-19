@@ -27,6 +27,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   const [actionLog, setActionLog] = useState([]);
   const [attendanceCount, setAttendanceCount] = useState(0);
   const [predictionCount, setPredictionCount] = useState(0);
+  const [latestMarks, setLatestMarks] = useState([]);
 
   const [submittingAttendance, setSubmittingAttendance] = useState(false);
   const [submittingMarks, setSubmittingMarks] = useState(false);
@@ -236,6 +237,30 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   }, [loadStudents, classFilters.batch, classFilters.faculty, classFilters.section]);
 
   useEffect(() => {
+    if (!token || students.length === 0) {
+      setLatestMarks([]);
+      return;
+    }
+
+    const loadLatestMarks = async () => {
+      const results = await Promise.allSettled(
+        students.map((student) =>
+          api(`/api/students/${student.id}/marks/latest`, { token })
+            .then((res) => ({ student, mark: res.mark }))
+        )
+      );
+
+      const rows = results
+        .filter((r) => r.status === "fulfilled")
+        .map((r) => r.value);
+
+      setLatestMarks(rows);
+    };
+
+    loadLatestMarks().catch(() => setLatestMarks([]));
+  }, [token, students]);
+
+  useEffect(() => {
     loadNotices();
   }, [loadNotices]);
 
@@ -406,11 +431,18 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
         payload.finalGrade = Number(marksForm.finalGrade);
       }
 
-      await api(`/api/students/${studentId}/marks`, {
+      const res = await api(`/api/students/${studentId}/marks`, {
         token,
         method: "POST",
         body: payload,
       });
+
+      if (res?.mark) {
+        setLatestMarks((prev) => {
+          const next = prev.filter((row) => row.student.id !== studentId);
+          return [{ student: students.find((s) => s.id === studentId) || { id: studentId }, mark: res.mark }, ...next];
+        });
+      }
 
       setNotice("Marks saved successfully.");
       const student = students.find((s) => s.id === studentId);
@@ -583,6 +615,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
         {tab === "marks" ? (
           <MarksSection
             students={students}
+            latestMarks={latestMarks}
             marksForm={marksForm}
             onMarksChange={(field, value) => setMarksForm((prev) => ({ ...prev, [field]: value }))}
             onSubmit={handleMarksSubmit}

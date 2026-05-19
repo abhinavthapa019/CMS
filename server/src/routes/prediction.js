@@ -108,6 +108,15 @@ function codeToLetter(code) {
   return "F";
 }
 
+function capForAttendance(letter, absenceSignal, absences) {
+  const l = String(letter || "").toUpperCase();
+  if (absenceSignal !== "student") {
+    return l === "A" ? "B" : l;
+  }
+  if (Number(absences) >= 10 && l === "A") return "B";
+  return l;
+}
+
 function buildPredictUrl(base) {
   if (!base) return "";
   const trimmed = String(base).trim().replace(/\/+$/, "");
@@ -176,6 +185,8 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
       console.error("Prediction error", err.message);
     }
   }
+
+  predictedLetter = capForAttendance(predictedLetter, absenceSignal.source, absences);
 
   const storedCode = letterToCode(predictedLetter);
 

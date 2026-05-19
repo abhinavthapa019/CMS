@@ -66,7 +66,7 @@ def encode_yes_no(value: str) -> int:
 def transform_absences(value: float) -> int:
     n = int(round(float(value)))
     n = max(0, min(n, 30))
-    return n * 2
+    return n * 3
 
 
 def absence_flag(value: float) -> int:
@@ -75,12 +75,12 @@ def absence_flag(value: float) -> int:
 
 
 def boost_extracurricular(value: int) -> int:
-    return int(value) * 3
+    return int(value) * 6
 
 
 def scale_travel_time(value: int) -> int:
     n = int(round(float(value)))
-    return max(1, min(n, 4)) * 2
+    return max(1, min(n, 4)) * 3
 
 
 def bucket_g2(value: float) -> int:
@@ -97,7 +97,8 @@ def bucket_g2(value: float) -> int:
 
 
 def scale_g2(value: float) -> int:
-    return bucket_g2(value) * 2
+    bucket = bucket_g2(value)
+    return [0, 2, 3, 4, 5][bucket]
 
 
 def _drop_index_col(df: pd.DataFrame) -> pd.DataFrame:
