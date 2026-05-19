@@ -10,6 +10,13 @@ function randInt(min, max) {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
+function sampleGrade() {
+  const edgeChance = Math.random();
+  if (edgeChance < 0.08) return 0;
+  if (edgeChance < 0.16) return 20;
+  return randInt(6, 18);
+}
+
 async function run() {
   const students = await prisma.student.findMany({
     select: { id: true, batch: true, faculty: true, section: true },
@@ -47,12 +54,12 @@ async function run() {
     const teacherId = teacherByClass.get(classKey(s)) || teacherFallback.id;
 
     // Grade scale: 0..20 (consistent with UCI dataset mapping)
-    const g1 = randInt(6, 18);
-    const g2 = Math.max(0, Math.min(20, g1 + randInt(-4, 4)));
-    const activities = Math.random() < 0.35;
+    const g1 = sampleGrade();
+    const g2 = Math.max(0, Math.min(20, g1 + randInt(-6, 6)));
+    const activities = Math.random() < 0.4;
 
     // Optionally seed finalGrade for some students
-    const finalGrade = Math.random() < 0.6 ? Math.max(0, Math.min(20, g2 + randInt(-3, 3))) : null;
+    const finalGrade = Math.random() < 0.65 ? Math.max(0, Math.min(20, g2 + randInt(-4, 4))) : null;
 
     rows.push({
       studentId: s.id,

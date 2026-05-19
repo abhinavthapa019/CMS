@@ -21,7 +21,8 @@ MODEL_PATH = BASE_DIR / "model" / "random_forest.pkl"
 FEATURE_ORDER: List[str] = [
     "G1",
     "G2",
-    "absences",
+    "absences_scaled",
+    "absences_flag",
     "extracurricular",
     "Mjob",
     "Fjob",
@@ -37,6 +38,43 @@ class PredictRequest(BaseModel):
     Mjob: int = Field(..., ge=0)
     Fjob: int = Field(..., ge=0)
     traveltime: int = Field(..., ge=1, le=4)
+
+
+def bucket_g2(value: float) -> int:
+    n = int(round(float(value)))
+    if n <= 6:
+        return 0
+    if n <= 9:
+        return 1
+    if n <= 12:
+        return 2
+    if n <= 15:
+        return 3
+    return 4
+
+
+def scale_g2(value: float) -> int:
+    return bucket_g2(value) * 2
+
+
+def transform_absences(value: float) -> int:
+    n = int(round(float(value)))
+    n = max(0, min(n, 30))
+    return n * 2
+
+
+def absence_flag(value: float) -> int:
+    n = int(round(float(value)))
+    return 1 if n >= 10 else 0
+
+
+def boost_extracurricular(value: int) -> int:
+    return int(value) * 3
+
+
+def scale_travel_time(value: int) -> int:
+    n = int(round(float(value)))
+    return max(1, min(n, 4)) * 2
 
 
 class PredictResponse(BaseModel):
@@ -87,6 +125,11 @@ def predict(req: PredictRequest) -> PredictResponse:
     expected = meta.get("feature_order") or FEATURE_ORDER
 
     payload = req.model_dump()
+    payload["G2"] = scale_g2(payload["G2"])
+    payload["absences_scaled"] = transform_absences(payload["absences"])
+    payload["absences_flag"] = absence_flag(payload["absences"])
+    payload["extracurricular"] = boost_extracurricular(payload["extracurricular"])
+    payload["traveltime"] = scale_travel_time(payload["traveltime"])
     try:
         row = [payload[name] for name in expected]
         x = pd.DataFrame([row], columns=list(expected), dtype=float)

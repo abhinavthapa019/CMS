@@ -1,4 +1,5 @@
 const { Router } = require("express");
+const bcrypt = require("bcryptjs");
 const { z } = require("zod");
 const { AcademicBatch, Faculty, Job, Role, Section } = require("@prisma/client");
 const { prisma } = require("../lib/prisma");
@@ -101,7 +102,6 @@ const createStudentSchema = z.object({
   body: z.object({
     firstName: z.string().min(1),
     lastName: z.string().min(1),
-    rollNumber: z.string().min(1),
     batch: z.nativeEnum(AcademicBatch),
     faculty: z.nativeEnum(Faculty),
     section: z.nativeEnum(Section),
@@ -111,10 +111,80 @@ const createStudentSchema = z.object({
   }),
 });
 
+function classCode({ batch, faculty, section }) {
+  const batchCode = batch === AcademicBatch.ELEVEN ? "11" : "12";
+  const facultyCode = faculty === Faculty.SCIENCE ? "S" : "M";
+  const sectionCode = section === Section.BIO
+    ? "B"
+    : section === Section.CS
+      ? "C"
+      : section === Section.ECONOMICS
+        ? "E"
+        : "M";
+  return `${batchCode}${facultyCode}${sectionCode}`;
+}
+
+function nextRollNumber(rollNumbers) {
+  let max = 0;
+  for (const row of rollNumbers) {
+    const n = Number(row.rollNumber);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return String(max + 1);
+}
+
 router.post("/api/students", requireAuth(Role.ADMIN), validate(createStudentSchema), async (req, res) => {
   const data = req.validated.body;
   try {
-    const student = await prisma.student.create({ data });
+    const student = await prisma.$transaction(async (tx) => {
+      const existing = await tx.student.findMany({
+        where: { batch: data.batch, faculty: data.faculty, section: data.section },
+        select: { rollNumber: true },
+      });
+
+      const rollNumber = nextRollNumber(existing);
+      const createdStudent = await tx.student.create({
+        data: {
+          ...data,
+          rollNumber,
+        },
+      });
+
+      const code = classCode(data).toLowerCase();
+      const email = `s${code}${rollNumber}@students.local`;
+      const password = "student123";
+      const hashed = await bcrypt.hash(password, 10);
+
+      const user = await tx.user.create({
+        data: {
+          name: `${data.firstName} ${data.lastName}`,
+          email,
+          password: hashed,
+          role: Role.STUDENT,
+        },
+        select: { id: true, email: true },
+      });
+
+      return tx.student.update({
+        where: { id: createdStudent.id },
+        data: { userId: user.id },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          rollNumber: true,
+          batch: true,
+          faculty: true,
+          section: true,
+          motherJob: true,
+          fatherJob: true,
+          travelTime: true,
+          userId: true,
+          user: { select: { email: true } },
+        },
+      });
+    });
+
     return res.status(201).json({ ok: true, student });
   } catch (err) {
     if (err.code === "P2002") {

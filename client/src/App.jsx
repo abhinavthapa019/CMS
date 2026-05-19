@@ -3,6 +3,8 @@ import Login from "./pages/Login";
 import Admin from "./pages/Admin";
 import Teacher from "./pages/Teacher";
 import Student from "./pages/Student";
+import FeePayment from "./pages/FeePayment";
+import FeePaymentSuccess from "./pages/FeePaymentSuccess";
 import { AuthProvider } from "./state/auth.jsx";
 import { useAuth } from "./state/useAuth.jsx";
 
@@ -41,6 +43,22 @@ export default function App() {
             element={
               <Protected roles={["STUDENT"]}>
                 <Student />
+              </Protected>
+            }
+          />
+          <Route
+            path="/student/fees/pay/:feeId"
+            element={
+              <Protected roles={["STUDENT"]}>
+                <FeePayment />
+              </Protected>
+            }
+          />
+          <Route
+            path="/student/fees/success"
+            element={
+              <Protected roles={["STUDENT"]}>
+                <FeePaymentSuccess />
               </Protected>
             }
           />

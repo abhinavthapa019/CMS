@@ -44,16 +44,59 @@ function prettyClass(item) {
   return `${batch}-${faculty}-${item.section}`;
 }
 
-export default function DashboardSection({ users, students, analytics, loading, onGoStudents, onGoTeachers }) {
+function groupAtRiskStudents(rows) {
+  const groups = {
+    SCIENCE: { ELEVEN: [], TWELVE: [] },
+    MANAGEMENT: { ELEVEN: [], TWELVE: [] },
+  };
+
+  for (const row of rows) {
+    if (groups[row.faculty]?.[row.batch]) {
+      groups[row.faculty][row.batch].push(row);
+    }
+  }
+
+  for (const faculty of Object.keys(groups)) {
+    for (const batch of Object.keys(groups[faculty])) {
+      groups[faculty][batch].sort((a, b) => (a.attendancePercent ?? 0) - (b.attendancePercent ?? 0));
+    }
+  }
+
+  return groups;
+}
+
+const MONTH_OPTIONS = [
+  { value: 1, label: "Jan" },
+  { value: 2, label: "Feb" },
+  { value: 3, label: "Mar" },
+  { value: 4, label: "Apr" },
+  { value: 5, label: "May" },
+  { value: 6, label: "Jun" },
+  { value: 7, label: "Jul" },
+  { value: 8, label: "Aug" },
+  { value: 9, label: "Sep" },
+  { value: 10, label: "Oct" },
+  { value: 11, label: "Nov" },
+  { value: 12, label: "Dec" },
+];
+
+export default function DashboardSection({
+  users,
+  students,
+  analytics,
+  loading,
+  month,
+  year,
+  onPeriodChange,
+  onGoStudents,
+  onGoTeachers,
+}) {
   const periodLabel = analytics?.periodLabel || "Current Month";
-  const recentStudents = [...students]
-    .sort((a, b) => {
-      const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-      if (bTime !== aTime) return bTime - aTime;
-      return (b?.id || 0) - (a?.id || 0);
-    })
-    .slice(0, 5);
+  const atRiskGroups = groupAtRiskStudents(analytics?.lowAttendance || []);
+  const atRiskCount = Object.values(atRiskGroups).reduce(
+    (total, batchGroup) => total + Object.values(batchGroup).reduce((acc, list) => acc + list.length, 0),
+    0
+  );
 
   const kpis = analytics?.kpis || {
     totalStudents: students.length,
@@ -64,9 +107,40 @@ export default function DashboardSection({ users, students, analytics, loading, 
   const classDaily = analytics?.classWiseDaily || [];
   const trend = analytics?.trend || [];
   const distribution = analytics?.distribution || [];
+  const currentYear = new Date().getFullYear();
+  const yearOptions = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1].filter(
+    (value, index, self) => self.indexOf(value) === index
+  );
 
   return (
     <>
+      <section className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Attendance Overview</h2>
+          <p className="text-xs text-secondary">Use the month selector to navigate chart data.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={month}
+            onChange={(event) => onPeriodChange(Number(event.target.value), year)}
+            className="rounded-lg bg-surface-container-highest border-none text-sm"
+          >
+            {MONTH_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <select
+            value={year}
+            onChange={(event) => onPeriodChange(month, Number(event.target.value))}
+            className="rounded-lg bg-surface-container-highest border-none text-sm"
+          >
+            {yearOptions.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </div>
+      </section>
+
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon="school" label="Total Students" value={kpis.totalStudents} tone="primary" />
         <StatCard icon="fact_check" label={`Attendance % (${periodLabel})`} value={`${kpis.attendancePercent}%`} tone="secondary" />
@@ -218,19 +292,45 @@ export default function DashboardSection({ users, students, analytics, loading, 
 
       <section className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/10 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-headline font-bold text-lg text-on-surface">Recent Students</h3>
-          <span className="text-xs font-semibold uppercase tracking-wider text-secondary">Latest 5</span>
+          <h3 className="font-headline font-bold text-lg text-on-surface">At-Risk Students</h3>
+          <span className="text-xs font-semibold uppercase tracking-wider text-secondary">Low Attendance</span>
         </div>
         {loading ? (
           <p className="text-secondary text-sm">Loading...</p>
-        ) : students.length === 0 ? (
-          <p className="text-secondary text-sm">No students yet. Add your first student.</p>
+        ) : atRiskCount === 0 ? (
+          <p className="text-secondary text-sm">No at-risk students for the selected month.</p>
         ) : (
-          <div className="space-y-3">
-            {recentStudents.map((s) => (
-              <div key={s.id} className="flex items-center justify-between border-b border-outline-variant/20 pb-2">
-                <p className="font-medium text-on-surface">{s.firstName} {s.lastName}</p>
-                <p className="text-sm text-secondary">#{s.rollNumber}</p>
+          <div className="grid md:grid-cols-2 gap-4">
+            {[
+              { key: "SCIENCE", label: "Science" },
+              { key: "MANAGEMENT", label: "Management" },
+            ].map((faculty) => (
+              <div key={faculty.key} className="space-y-3">
+                <div className="text-sm font-semibold text-secondary uppercase tracking-wider">{faculty.label}</div>
+                {[
+                  { key: "ELEVEN", label: "Class 11" },
+                  { key: "TWELVE", label: "Class 12" },
+                ].map((batch) => (
+                  <div key={`${faculty.key}-${batch.key}`} className="rounded-xl border border-outline-variant/20 p-3 space-y-2">
+                    <div className="text-xs font-semibold text-secondary uppercase tracking-wider">{batch.label}</div>
+                    {atRiskGroups[faculty.key][batch.key].length === 0 ? (
+                      <p className="text-xs text-secondary">No students flagged.</p>
+                    ) : (
+                      atRiskGroups[faculty.key][batch.key].map((student) => (
+                        <div key={student.studentId} className="flex items-center justify-between border-b border-outline-variant/15 pb-2">
+                          <div>
+                            <p className="font-medium text-on-surface">{student.name}</p>
+                            <p className="text-xs text-secondary">#{student.rollNumber} • {student.section}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold text-error">{student.attendancePercent}%</p>
+                            <p className="text-xs text-secondary">attendance</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ))}
               </div>
             ))}
           </div>

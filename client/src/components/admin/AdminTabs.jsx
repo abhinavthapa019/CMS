@@ -3,6 +3,7 @@ const TABS = [
   { id: "students", label: "Students" },
   { id: "teachers", label: "Teachers" },
   { id: "notices", label: "Notices" },
+  { id: "fees", label: "Fees" },
   { id: "class-teachers", label: "Class Teachers" },
   { id: "attendance", label: "Attendance" },
   { id: "predictions", label: "Predictions" },

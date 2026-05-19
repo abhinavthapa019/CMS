@@ -5,6 +5,7 @@ export default function StudentsSection({
   loading,
   allStudents,
   students,
+  nextRollNumber,
   classFilter,
   onClassFilterChange,
   search,
@@ -19,6 +20,7 @@ export default function StudentsSection({
   const classSelected = classFilter.batch && classFilter.faculty && classFilter.section;
   const displayBatch = (batch) => (batch === "ELEVEN" ? "11" : batch === "TWELVE" ? "12" : batch);
   const renderEmail = (s) => s?.user?.email || "—";
+  const sortByRoll = (a, b) => Number(a.rollNumber || 0) - Number(b.rollNumber || 0);
 
   return (
     <section className="grid lg:grid-cols-5 gap-4">
@@ -41,12 +43,9 @@ export default function StudentsSection({
           />
         </Field>
         <Field label="Roll Number">
-          <input
-            required
-            className="w-full rounded-lg bg-surface-container-highest border-none"
-            value={studentForm.rollNumber}
-            onChange={(e) => onStudentFormChange("rollNumber", e.target.value)}
-          />
+          <div className="w-full rounded-lg bg-surface-container-highest border border-outline-variant/20 px-3 py-2 text-sm text-secondary">
+            Auto-assigned: #{nextRollNumber}
+          </div>
         </Field>
         <Field label="Batch">
           <select
@@ -184,17 +183,15 @@ export default function StudentsSection({
                     <th className="py-2 font-semibold">Name</th>
                     <th className="py-2 font-semibold">Email</th>
                     <th className="py-2 font-semibold">Roll</th>
-                    <th className="py-2 font-semibold">Class</th>
                     <th className="py-2 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(allStudents || []).map((s) => (
+                  {(allStudents || []).slice().sort(sortByRoll).map((s) => (
                     <tr key={s.id} className="border-b border-outline-variant/10">
                       <td className="py-2 font-medium">{s.firstName} {s.lastName}</td>
                       <td className="py-2 text-secondary">{renderEmail(s)}</td>
                       <td className="py-2 text-secondary">{s.rollNumber}</td>
-                      <td className="py-2 text-secondary">{displayBatch(s.batch)} / {s.faculty} / {s.section}</td>
                       <td className="py-2">
                         <button
                           type="button"
@@ -222,7 +219,6 @@ export default function StudentsSection({
                 <th className="py-2 font-semibold">Name</th>
                 <th className="py-2 font-semibold">Email</th>
                 <th className="py-2 font-semibold">Roll</th>
-                <th className="py-2 font-semibold">Class</th>
                 <th className="py-2 font-semibold">Mother Job</th>
                 <th className="py-2 font-semibold">Father Job</th>
                 <th className="py-2 font-semibold">Travel</th>
@@ -230,12 +226,11 @@ export default function StudentsSection({
               </tr>
             </thead>
             <tbody>
-              {students.map((s) => (
+              {[...students].sort(sortByRoll).map((s) => (
                 <tr key={s.id} className="border-b border-outline-variant/10">
                   <td className="py-2 font-medium">{s.firstName} {s.lastName}</td>
                   <td className="py-2 text-secondary">{renderEmail(s)}</td>
                   <td className="py-2 text-secondary">{s.rollNumber}</td>
-                  <td className="py-2 text-secondary">{displayBatch(s.batch)} / {s.faculty} / {s.section}</td>
                   <td className="py-2 text-secondary">{s.motherJob}</td>
                   <td className="py-2 text-secondary">{s.fatherJob}</td>
                   <td className="py-2 text-secondary">{s.travelTime}</td>

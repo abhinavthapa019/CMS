@@ -23,6 +23,12 @@ export default function Login() {
     navigate(routeForRole(user.role), { replace: true });
   }, [token, user, navigate]);
 
+  useEffect(() => {
+    if (email || password) return;
+    setEmail("admin@campus.local");
+    setPassword("admin123");
+  }, [email, password]);
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr("");

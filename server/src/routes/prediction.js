@@ -8,8 +8,36 @@ const { AcademicBatch, Faculty, Role, Section } = require("@prisma/client");
 
 const router = Router();
 
-async function computeAbsences(studentId) {
-  return prisma.attendance.count({ where: { studentId, present: false } });
+async function computeAbsenceSignal(student) {
+  const [totalRows, absenceRows] = await Promise.all([
+    prisma.attendance.count({ where: { studentId: student.id } }),
+    prisma.attendance.count({ where: { studentId: student.id, present: false } }),
+  ]);
+
+  if (totalRows > 0) {
+    return { absences: absenceRows, source: "student" };
+  }
+
+  const classStudents = await prisma.student.findMany({
+    where: { batch: student.batch, faculty: student.faculty, section: student.section },
+    select: { id: true },
+  });
+
+  if (classStudents.length === 0) {
+    return { absences: 3, source: "default" };
+  }
+
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const classAbsences = await prisma.attendance.count({
+    where: {
+      studentId: { in: classStudents.map((s) => s.id) },
+      present: false,
+      date: { gte: since },
+    },
+  });
+
+  const avgAbsences = Math.round(classAbsences / classStudents.length) || 3;
+  return { absences: avgAbsences, source: "class-average" };
 }
 
 // Keep encoding consistent with ml-services/data/student.csv (numeric codes)
@@ -46,6 +74,20 @@ function numericToLetter(gradeNum) {
   if (n >= 10) return "C";
   if (n >= 7) return "D";
   return "F";
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function heuristicPrediction({ g1, g2, absences, extracurricular, travelTime, absenceSource }) {
+  const absencePenalty = clamp(Number(absences) || 0, 0, 30) * 0.35;
+  const missingPenalty = absenceSource === "student" ? 0 : 1.5;
+  const activityBoost = extracurricular ? 1.6 : 0;
+  const travelPenalty = clamp(Number(travelTime) || 2, 1, 4) * 0.55;
+  const base = (Number(g1) || 0) * 0.55 + (Number(g2) || 0) * 0.45;
+  const score = clamp(base - absencePenalty - travelPenalty - missingPenalty + activityBoost, 0, 20);
+  return numericToLetter(score);
 }
 
 function letterToCode(letter) {
@@ -90,9 +132,10 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
   });
   if (!latestMark) return res.status(400).json({ ok: false, error: "No marks found for student" });
 
-  const absences = await computeAbsences(studentId);
+  const absenceSignal = await computeAbsenceSignal(student);
+  const absences = absenceSignal.absences;
 
-  // Required 7 features (strict keys)
+  // Required features (strict keys)
   const features = {
     G1: latestMark.g1,
     G2: latestMark.g2,
@@ -103,7 +146,14 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
     traveltime: toTravelTimeScale(student.travelTime),
   };
 
-  let predictedLetter = numericToLetter(latestMark.g2);
+  let predictedLetter = heuristicPrediction({
+    g1: latestMark.g1,
+    g2: latestMark.g2,
+    absences,
+    extracurricular: features.extracurricular,
+    travelTime: features.traveltime,
+    absenceSource: absenceSignal.source,
+  });
   let confidence = null;
 
   const predictUrl = buildPredictUrl(ML_SERVICE_URL);
@@ -134,6 +184,7 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
     predicted_grade: predictedLetter,
     confidence,
     source: predictUrl ? "ml-service" : "fallback",
+    absence_source: absenceSignal.source,
   };
 
   const prediction = await prisma.prediction.create({

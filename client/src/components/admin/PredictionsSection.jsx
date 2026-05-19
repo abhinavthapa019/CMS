@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -25,7 +25,6 @@ export default function PredictionsSection({ token }) {
     { grade: "D", count: 0 },
     { grade: "F", count: 0 },
   ]);
-  const [avgConfidence, setAvgConfidence] = useState(null);
 
   function buildQuery() {
     const q = new URLSearchParams();
@@ -45,7 +44,6 @@ export default function PredictionsSection({ token }) {
       const res = await api(`/api/predictions/admin${buildQuery()}`, { token });
       setRows(res.predictions || []);
       setDistribution(res.distribution || []);
-      setAvgConfidence(typeof res.avgConfidence === "number" ? res.avgConfidence : null);
     } catch (e) {
       setError(e.message || "Failed to load predictions");
     } finally {
@@ -104,11 +102,6 @@ export default function PredictionsSection({ token }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, filter.batch, filter.faculty, filter.section]);
-
-  const avgConfidencePct = useMemo(() => {
-    if (typeof avgConfidence !== "number" || !Number.isFinite(avgConfidence)) return null;
-    return Math.round(avgConfidence * 100);
-  }, [avgConfidence]);
 
   return (
     <section className="space-y-4">
@@ -205,9 +198,6 @@ export default function PredictionsSection({ token }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-xs text-secondary mt-2">
-            Average confidence: {avgConfidencePct === null ? "n/a" : `${avgConfidencePct}%`}
-          </p>
         </div>
 
         <div className="bg-surface-container-lowest rounded-2xl p-5 border border-outline-variant/20">
@@ -222,7 +212,6 @@ export default function PredictionsSection({ token }) {
                   <th className="py-2 px-3 font-semibold">Student</th>
                   <th className="py-2 px-3 font-semibold">Class</th>
                   <th className="py-2 px-3 font-semibold">Grade</th>
-                  <th className="py-2 px-3 font-semibold">Conf.</th>
                 </tr>
               </thead>
               <tbody>
@@ -235,11 +224,6 @@ export default function PredictionsSection({ token }) {
                       {r.student?.batch}/{r.student?.faculty}/{r.student?.section}
                     </td>
                     <td className="py-2 px-3 text-primary font-semibold">{r.predictedGrade}</td>
-                    <td className="py-2 px-3 text-secondary">
-                      {typeof r.confidence === "number" && Number.isFinite(r.confidence)
-                        ? `${Math.round(r.confidence * 100)}%`
-                        : "—"}
-                    </td>
                   </tr>
                 ))}
               </tbody>

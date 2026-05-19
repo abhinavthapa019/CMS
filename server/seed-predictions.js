@@ -2,6 +2,10 @@ const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function randFloat(min, max) {
   return min + Math.random() * (max - min);
 }
@@ -14,6 +18,15 @@ function numericToLetter(gradeNum) {
   if (n >= 10) return "C";
   if (n >= 7) return "D";
   return "F";
+}
+
+function heuristicPrediction({ g1, g2, absences, extracurricular, travelTime }) {
+  const absencePenalty = clamp(Number(absences) || 0, 0, 30) * 0.35;
+  const activityBoost = extracurricular ? 1.6 : 0;
+  const travelPenalty = clamp(Number(travelTime) || 2, 1, 4) * 0.55;
+  const base = (Number(g1) || 0) * 0.55 + (Number(g2) || 0) * 0.45;
+  const score = clamp(base - absencePenalty - travelPenalty + activityBoost, 0, 20);
+  return numericToLetter(score);
 }
 
 function letterToCode(letter) {
@@ -95,7 +108,13 @@ async function run() {
     const mark = latestMarkByStudent.get(s.id);
     if (!mark) continue;
 
-    const predictedLetter = numericToLetter(mark.g2);
+    const predictedLetter = heuristicPrediction({
+      g1: mark.g1,
+      g2: mark.g2,
+      absences: absencesByStudent.get(s.id) || 0,
+      extracurricular: mark.activities ? 1 : 0,
+      travelTime: toTravelTimeScale(s.travelTime),
+    });
     const storedCode = letterToCode(predictedLetter);
 
     const features = {

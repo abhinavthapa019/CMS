@@ -12,12 +12,13 @@ This folder contains the Python-based ML microservice used by the Node backend f
 Training and inference use the exact 7-feature set below (order is enforced server-side):
 
 1. `G1`
-2. `G2`
-3. `absences`
-4. `extracurricular`
-5. `Mjob`
-6. `Fjob`
-7. `traveltime`
+2. `G2` (bucketed)
+3. `absences_scaled` (absences * 2, capped at 30)
+4. `absences_flag` (1 if absences >= 10)
+5. `extracurricular` (multiplied by 3)
+6. `Mjob`
+7. `Fjob`
+8. `traveltime` (scaled 1..4 -> 2..8)
 
 ## Local setup (recommended)
 

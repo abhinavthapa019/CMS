@@ -12,6 +12,16 @@ enum Role {
   STUDENT
 }
 
+enum FeeStatus {
+  PENDING
+  PAID
+}
+
+enum FeeType {
+  MONTHLY
+  MANUAL
+}
+
 
 enum Job {
   teacher
@@ -55,6 +65,7 @@ model User {
   marks      Mark[]
   subjectAssignments TeacherSubjectAssignment[]
   classTeacherAssignments ClassTeacherAssignment[]
+  createdFees Fee[]
 }
 
 model Student {
@@ -78,6 +89,7 @@ model Student {
   marks      Mark[]
   predictions Prediction[]
   assignmentSubmissions AssignmentSubmission[]
+  fees      Fee[]
 
   @@index([batch, faculty, section])
   @@unique([batch, faculty, section, rollNumber])
@@ -110,6 +122,35 @@ model NoticeRecipient {
 
   @@unique([noticeId, userId])
   @@index([userId])
+}
+
+model Fee {
+  id          Int       @id @default(autoincrement())
+  title       String
+  amount      Int
+  dueDate     DateTime?
+  status      FeeStatus @default(PENDING)
+  type        FeeType   @default(MANUAL)
+  billingMonth Int?
+  billingYear  Int?
+  paidAt      DateTime?
+  paymentRef  String?
+  paymentProvider String?
+  paymentPidx String? @unique
+  paymentTransactionId String?
+  paymentStatus String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  student     Student   @relation(fields: [studentId], references: [id])
+  studentId   Int
+
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdById Int
+
+  @@index([studentId])
+  @@index([status])
+  @@unique([studentId, billingYear, billingMonth, type])
 }
 
 model Subject {

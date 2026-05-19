@@ -76,8 +76,18 @@ const lastNames = [
 
 const jobs = ["teacher", "services", "health", "at_home", "other"];
 
-function pick(arr, idx) {
-  return arr[idx % arr.length];
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function randInt(min, max) {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function sampleTravelTime() {
+  const edgePool = [1, 4, 5, 10, 30, 60, 90];
+  if (Math.random() < 0.25) return pickRandom(edgePool);
+  return randInt(1, 4);
 }
 
 async function run() {
@@ -96,15 +106,14 @@ async function run() {
     prisma.attendance.deleteMany(),
     prisma.mark.deleteMany(),
     prisma.prediction.deleteMany(),
+    prisma.fee.deleteMany(),
     prisma.student.deleteMany(),
   ]);
 
-  let globalCounter = 0;
-
   for (const cls of classes) {
     for (let i = 1; i <= 10; i += 1) {
-      const firstName = pick(firstNames, globalCounter + i);
-      const lastName = pick(lastNames, globalCounter * 2 + i);
+      const firstName = pickRandom(firstNames);
+      const lastName = pickRandom(lastNames);
       const rollNumber = String(i);
 
       // create student record
@@ -116,43 +125,36 @@ async function run() {
           batch: cls.batch,
           faculty: cls.faculty,
           section: cls.section,
-          motherJob: pick(jobs, globalCounter + i),
-          fatherJob: pick(jobs, globalCounter + i + 1),
-          travelTime: (i % 5) + 1,
+          motherJob: pickRandom(jobs),
+          fatherJob: pickRandom(jobs),
+          travelTime: sampleTravelTime(),
         },
       });
 
-      // For ELEVEN SCIENCE students, also create a linked User account (student actor)
-      if (cls.batch === "ELEVEN" && cls.faculty === "SCIENCE") {
-        // create a simple email: firstname.lastname<roll>@students.local to keep uniqueness
-        const local = `${firstName}.${lastName}${i}`.toLowerCase().replace(/\s+/g, "").replace(/[^a-z0-9.]/g, "");
-        const email = `${local}@students.local`;
-        const password = "student123";
-        const hashed = await bcrypt.hash(password, 10);
+      // Create a linked User account for every student.
+      const classCode = cls.code.toLowerCase();
+      const email = `s${classCode}${rollNumber}@students.local`;
+      const password = "student123";
+      const hashed = await bcrypt.hash(password, 10);
 
-        const user = await prisma.user.upsert({
-          where: { email },
-          create: {
-            name: `${firstName} ${lastName}`,
-            email,
-            password: hashed,
-            role: "STUDENT",
-          },
-          update: {},
-        });
+      const user = await prisma.user.upsert({
+        where: { email },
+        create: {
+          name: `${firstName} ${lastName}`,
+          email,
+          password: hashed,
+          role: "STUDENT",
+        },
+        update: {},
+      });
 
-        // link student -> user
-        await prisma.student.update({ where: { id: student.id }, data: { userId: user.id } });
-      }
-
-      globalCounter += 1;
+      // link student -> user
+      await prisma.student.update({ where: { id: student.id }, data: { userId: user.id } });
     }
   }
 
   console.log("Reset and seeded exactly 80 students across 8 classes (roll 1..10 in each class).");
-  console.log(
-    "Student demo login: password=student123 (only ELEVEN SCIENCE). Email format: firstname.lastname1@students.local"
-  );
+  console.log("Student demo login: password=student123 (all students). Email format: s<classcode><roll>@students.local");
 }
 
 run()

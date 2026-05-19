@@ -14,7 +14,8 @@ from sklearn.model_selection import train_test_split
 FEATURE_ORDER = [
     "G1",
     "G2",
-    "absences",
+    "absences_scaled",
+    "absences_flag",
     "extracurricular",
     "Mjob",
     "Fjob",
@@ -62,6 +63,43 @@ def encode_yes_no(value: str) -> int:
     return 1 if v in {"yes", "y", "true", "1"} else 0
 
 
+def transform_absences(value: float) -> int:
+    n = int(round(float(value)))
+    n = max(0, min(n, 30))
+    return n * 2
+
+
+def absence_flag(value: float) -> int:
+    n = int(round(float(value)))
+    return 1 if n >= 10 else 0
+
+
+def boost_extracurricular(value: int) -> int:
+    return int(value) * 3
+
+
+def scale_travel_time(value: int) -> int:
+    n = int(round(float(value)))
+    return max(1, min(n, 4)) * 2
+
+
+def bucket_g2(value: float) -> int:
+    n = int(round(float(value)))
+    if n <= 6:
+        return 0
+    if n <= 9:
+        return 1
+    if n <= 12:
+        return 2
+    if n <= 15:
+        return 3
+    return 4
+
+
+def scale_g2(value: float) -> int:
+    return bucket_g2(value) * 2
+
+
 def _drop_index_col(df: pd.DataFrame) -> pd.DataFrame:
     # Many UCI exports include an unnamed index column as the first column
     first = df.columns[0]
@@ -93,12 +131,14 @@ def build_processed_dataset(raw: pd.DataFrame) -> pd.DataFrame:
 
     df = pd.DataFrame()
     df["G1"] = pd.to_numeric(raw["G1"], errors="raise")
-    df["G2"] = pd.to_numeric(raw["G2"], errors="raise")
-    df["absences"] = pd.to_numeric(raw["absences"], errors="raise")
-    df["extracurricular"] = raw["activities"].map(encode_yes_no).astype(int)
+    df["G2"] = pd.to_numeric(raw["G2"], errors="raise").map(scale_g2).astype(int)
+    absences = pd.to_numeric(raw["absences"], errors="raise")
+    df["absences_scaled"] = absences.map(transform_absences).astype(int)
+    df["absences_flag"] = absences.map(absence_flag).astype(int)
+    df["extracurricular"] = raw["activities"].map(encode_yes_no).map(boost_extracurricular).astype(int)
     df["Mjob"] = raw["Mjob"].map(encode_job).astype(int)
     df["Fjob"] = raw["Fjob"].map(encode_job).astype(int)
-    df["traveltime"] = pd.to_numeric(raw["traveltime"], errors="raise").astype(int)
+    df["traveltime"] = pd.to_numeric(raw["traveltime"], errors="raise").map(scale_travel_time).astype(int)
 
     df[LABEL_COL] = raw["G3"].map(numeric_to_letter).astype(str)
 

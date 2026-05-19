@@ -5,6 +5,7 @@ import AdminTabs from "./AdminTabs";
 import AttendanceSummarySection from "./AttendanceSummarySection";
 import ClassTeachersSection from "./ClassTeachersSection";
 import DashboardSection from "./DashboardSection";
+import FeesSection from "./FeesSection";
 import StudentsSection from "./StudentsSection";
 import TeachersSection from "./TeachersSection";
 import NoticesSection from "./NoticesSection";
@@ -15,6 +16,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [submittingTeacher, setSubmittingTeacher] = useState(false);
   const [submittingStudent, setSubmittingStudent] = useState(false);
+  const [submittingFee, setSubmittingFee] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState(null);
   const [deletingStudentId, setDeletingStudentId] = useState(null);
   const [deletingClassTeacherId, setDeletingClassTeacherId] = useState(null);
@@ -27,7 +29,12 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   const [classTeacherAssignments, setClassTeacherAssignments] = useState([]);
   const [allStudents, setAllStudents] = useState([]);
   const [students, setStudents] = useState([]);
-  const [classFilter, setClassFilter] = useState({ batch: "", faculty: "", section: "" });
+  const [fees, setFees] = useState([]);
+  const [classFilter, setClassFilter] = useState({
+    batch: "ELEVEN",
+    faculty: "SCIENCE",
+    section: "BIO",
+  });
   const [attendanceFilter, setAttendanceFilter] = useState({
     batch: "ELEVEN",
     faculty: "SCIENCE",
@@ -36,12 +43,13 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   const [attendanceSummary, setAttendanceSummary] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [studentSearch, setStudentSearch] = useState("");
+  const [dashboardMonth, setDashboardMonth] = useState(() => new Date().getMonth() + 1);
+  const [dashboardYear, setDashboardYear] = useState(() => new Date().getFullYear());
   
 
   const [studentForm, setStudentForm] = useState({
     firstName: "",
     lastName: "",
-    rollNumber: "",
     batch: "ELEVEN",
     faculty: "SCIENCE",
     section: "BIO",
@@ -50,19 +58,31 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     travelTime: 1,
   });
 
+  const [feeForm, setFeeForm] = useState({
+    studentId: "",
+    title: "",
+    amount: "",
+    dueDate: "",
+  });
+
   const loadAdminData = useCallback(async () => {
     if (!token || user?.role !== "ADMIN") return;
 
     setLoading(true);
     setError("");
     try {
-      const [usersRes, attendanceRes, analyticsRes, teacherAssignmentRes, classTeacherRes, studentsRes] = await Promise.all([
+      const analyticsQuery = new URLSearchParams({
+        month: String(dashboardMonth),
+        year: String(dashboardYear),
+      }).toString();
+      const [usersRes, attendanceRes, analyticsRes, teacherAssignmentRes, classTeacherRes, studentsRes, feeRes] = await Promise.all([
         api("/api/users", { token }),
         api("/api/subjects", { token }),
-        api("/api/analytics/admin/overview", { token }),
+        api(`/api/analytics/admin/overview?${analyticsQuery}`, { token }),
         api("/api/teacher-subject-assignments", { token }),
         api("/api/class-teacher-assignments", { token }),
         api("/api/students", { token }),
+        api("/api/fees", { token }),
       ]);
       setUsers(usersRes.users || []);
       const subjectRows = attendanceRes.subjects || [];
@@ -70,6 +90,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
       setTeacherAssignments(teacherAssignmentRes.assignments || []);
       setClassTeacherAssignments(classTeacherRes.assignments || []);
       setAllStudents(studentsRes.students || []);
+      setFees(feeRes.fees || []);
 
       setAnalytics(analyticsRes);
     } catch (e) {
@@ -77,7 +98,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     } finally {
       setLoading(false);
     }
-  }, [token, user?.role]);
+  }, [token, user?.role, dashboardMonth, dashboardYear]);
 
   useEffect(() => {
     loadAdminData();
@@ -184,13 +205,26 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     }
   }
 
+  const nextRollNumber = useMemo(() => {
+    const classStudents = allStudents.filter((s) => (
+      s.batch === studentForm.batch &&
+      s.faculty === studentForm.faculty &&
+      s.section === studentForm.section
+    ));
+    const maxRoll = classStudents.reduce((max, s) => {
+      const n = Number(s.rollNumber);
+      return Number.isFinite(n) && n > max ? n : max;
+    }, 0);
+    return String(maxRoll + 1);
+  }, [allStudents, studentForm.batch, studentForm.faculty, studentForm.section]);
+
   async function handleCreateStudent(e) {
     e.preventDefault();
     setSubmittingStudent(true);
     setError("");
     setNotice("");
     try {
-      await api("/api/students", {
+      const res = await api("/api/students", {
         token,
         method: "POST",
         body: {
@@ -198,11 +232,21 @@ export default function AdminWorkspace({ user, token, onLogout }) {
           travelTime: Number(studentForm.travelTime),
         },
       });
+      const createdStudent = res.student;
+      if (createdStudent) {
+        setAllStudents((prev) => [createdStudent, ...prev]);
+        if (
+          createdStudent.batch === classFilter.batch &&
+          createdStudent.faculty === classFilter.faculty &&
+          createdStudent.section === classFilter.section
+        ) {
+          setStudents((prev) => [createdStudent, ...prev]);
+        }
+      }
       setNotice("Student created successfully.");
       setStudentForm({
         firstName: "",
         lastName: "",
-        rollNumber: "",
         batch: "ELEVEN",
         faculty: "SCIENCE",
         section: "BIO",
@@ -210,12 +254,58 @@ export default function AdminWorkspace({ user, token, onLogout }) {
         fatherJob: "teacher",
         travelTime: 1,
       });
-      await loadAdminData();
       setTab("students");
     } catch (e) {
       setError(e.message || "Unable to create student");
     } finally {
       setSubmittingStudent(false);
+    }
+  }
+
+  async function handleCreateFee(e) {
+    e.preventDefault();
+    setSubmittingFee(true);
+    setError("");
+    setNotice("");
+
+    const studentId = Number(feeForm.studentId);
+    const amount = Number(feeForm.amount);
+    const title = feeForm.title.trim();
+    if (!Number.isInteger(studentId)) {
+      setError("Select a student to assign the fee.");
+      setSubmittingFee(false);
+      return;
+    }
+    if (!title) {
+      setError("Enter a fee title.");
+      setSubmittingFee(false);
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError("Enter a valid fee amount.");
+      setSubmittingFee(false);
+      return;
+    }
+
+    try {
+      await api("/api/fees", {
+        token,
+        method: "POST",
+        body: {
+          studentId,
+          title,
+          amount,
+          dueDate: feeForm.dueDate || null,
+        },
+      });
+      setNotice("Fee created successfully.");
+      setFeeForm({ studentId: "", title: "", amount: "", dueDate: "" });
+      await loadAdminData();
+      setTab("fees");
+    } catch (e) {
+      setError(e.message || "Unable to create fee");
+    } finally {
+      setSubmittingFee(false);
     }
   }
 
@@ -317,6 +407,12 @@ export default function AdminWorkspace({ user, token, onLogout }) {
             students={allStudents}
             analytics={analytics}
             loading={loading}
+            month={dashboardMonth}
+            year={dashboardYear}
+            onPeriodChange={(nextMonth, nextYear) => {
+              setDashboardMonth(nextMonth);
+              setDashboardYear(nextYear);
+            }}
             onGoStudents={() => setTab("students")}
             onGoTeachers={() => setTab("teachers")}
           />
@@ -353,6 +449,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
             loading={loading}
             allStudents={filteredAllStudents}
             students={filteredStudents}
+            nextRollNumber={nextRollNumber}
             classFilter={classFilter}
             onClassFilterChange={(field, value) => setClassFilter((prev) => ({ ...prev, [field]: value }))}
             search={studentSearch}
@@ -363,6 +460,60 @@ export default function AdminWorkspace({ user, token, onLogout }) {
             submitting={submittingStudent}
             onDeleteStudent={handleDeleteStudent}
             deletingStudentId={deletingStudentId}
+          />
+        ) : null}
+
+        {tab === "fees" ? (
+          <FeesSection
+            fees={fees}
+            students={allStudents}
+            feeForm={feeForm}
+            onFeeFormChange={(field, value) => setFeeForm((prev) => ({ ...prev, [field]: value }))}
+            onGenerateMonthly={async (payload) => {
+              setSubmittingFee(true);
+              setError("");
+              setNotice("");
+              const month = Number(payload.month);
+              const year = Number(payload.year);
+              const amount = payload.amount ? Number(payload.amount) : undefined;
+              if (!Number.isInteger(month) || month < 1 || month > 12) {
+                setError("Select a valid month.");
+                setSubmittingFee(false);
+                return;
+              }
+              if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+                setError("Select a valid year.");
+                setSubmittingFee(false);
+                return;
+              }
+              if (payload.amount && (!Number.isFinite(amount) || amount <= 0)) {
+                setError("Enter a valid monthly amount.");
+                setSubmittingFee(false);
+                return;
+              }
+
+              try {
+                const res = await api("/api/fees/monthly/generate", {
+                  token,
+                  method: "POST",
+                  body: {
+                    month,
+                    year,
+                    amount,
+                    title: payload.title?.trim() || undefined,
+                  },
+                });
+                setNotice(`Monthly fees generated for ${res.month}/${res.year}: ${res.created} created, ${res.skipped} skipped.`);
+                await loadAdminData();
+                setTab("fees");
+              } catch (e) {
+                setError(e.message || "Unable to generate monthly fees");
+              } finally {
+                setSubmittingFee(false);
+              }
+            }}
+            onSubmit={handleCreateFee}
+            submitting={submittingFee}
           />
         ) : null}
 

@@ -314,13 +314,31 @@ router.get(["/api/analytics/teacher/:teacherId", "/analytics/teacher/:teacherId"
   });
 });
 
+function getMonthRangeUtc(year, month) {
+  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+  return { start, end };
+}
+
 router.get(["/api/analytics/admin/overview", "/analytics/admin/overview"], requireAuth(Role.ADMIN), async (req, res) => {
-  const monthRange = getCurrentMonthRangeUtc();
-  const periodLabel = getCurrentMonthLabel();
+  const monthParam = req.query.month ? Number(req.query.month) : null;
+  const yearParam = req.query.year ? Number(req.query.year) : null;
+  const validMonth = monthParam && Number.isInteger(monthParam) && monthParam >= 1 && monthParam <= 12;
+  const validYear = yearParam && Number.isInteger(yearParam) && yearParam >= 2000 && yearParam <= 2100;
+
+  const monthRange = validMonth && validYear
+    ? getMonthRangeUtc(yearParam, monthParam)
+    : getCurrentMonthRangeUtc();
+  const periodLabel = validMonth && validYear
+    ? new Date(Date.UTC(yearParam, monthParam - 1, 1)).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+    : getCurrentMonthLabel();
 
   const students = await prisma.student.findMany({
     select: {
       id: true,
+      firstName: true,
+      lastName: true,
+      rollNumber: true,
       batch: true,
       faculty: true,
       section: true,
@@ -371,6 +389,50 @@ router.get(["/api/analytics/admin/overview", "/analytics/admin/overview"], requi
   const trend = buildTrend(attendanceRows);
   const latestPresentCount = getLatestPresentCount(attendanceRows);
 
+  const totalsByStudent = await prisma.attendance.groupBy({
+    by: ["studentId"],
+    where: {
+      date: {
+        gte: monthRange.start,
+        lt: monthRange.end,
+      },
+    },
+    _count: { _all: true },
+  });
+
+  const presentByStudent = await prisma.attendance.groupBy({
+    by: ["studentId"],
+    where: {
+      present: true,
+      date: {
+        gte: monthRange.start,
+        lt: monthRange.end,
+      },
+    },
+    _count: { _all: true },
+  });
+
+  const totalMap = new Map(totalsByStudent.map((row) => [row.studentId, row._count._all]));
+  const presentMap = new Map(presentByStudent.map((row) => [row.studentId, row._count._all]));
+
+  const studentPercentages = students.map((student) => {
+    const total = totalMap.get(student.id) || 0;
+    const present = presentMap.get(student.id) || 0;
+    const attendancePercent = withPercent(present, total);
+    return {
+      studentId: student.id,
+      name: `${student.firstName} ${student.lastName}`,
+      rollNumber: student.rollNumber,
+      batch: student.batch,
+      faculty: student.faculty,
+      section: student.section,
+      presentCount: present,
+      totalCount: total,
+      attendancePercent,
+      lowAttendance: attendancePercent < 75,
+    };
+  });
+
   return res.json({
     ok: true,
     periodLabel,
@@ -393,6 +455,7 @@ router.get(["/api/analytics/admin/overview", "/analytics/admin/overview"], requi
       { name: "Present", value: totalPresent },
       { name: "Absent", value: Math.max(totalRows - totalPresent, 0) },
     ],
+    lowAttendance: studentPercentages.filter((s) => s.lowAttendance),
   });
 });
 
