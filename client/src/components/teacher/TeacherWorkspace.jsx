@@ -467,7 +467,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
         body: { studentId },
       });
 
-      setPredictionResult({ studentId, predictedGrade: res.predicted_grade, confidence: res.confidence ?? null });
+      setPredictionResult({ studentId, predictedGrade: res.predicted_grade });
       setPredictionCount((v) => v + 1);
       setNotice("Prediction completed.");
 
@@ -506,7 +506,6 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
             name: `${student.firstName} ${student.lastName}`,
             rollNumber: student.rollNumber,
             predictedGrade: res.predicted_grade,
-            confidence: res.confidence ?? null,
           }))
         )
       );

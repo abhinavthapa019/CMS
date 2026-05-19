@@ -37,7 +37,7 @@ export default function MarksSection({
             value={marksForm.g1}
             onChange={(e) => onMarksChange("g1", e.target.value)}
           />
-          <p className="text-xs text-secondary">Stored as /20 internally for prediction.</p>
+          
         </label>
 
         <label className="block space-y-1">
@@ -51,7 +51,7 @@ export default function MarksSection({
             value={marksForm.g2}
             onChange={(e) => onMarksChange("g2", e.target.value)}
           />
-          <p className="text-xs text-secondary">Stored as /20 internally for prediction.</p>
+          
         </label>
 
         {/* <label className="block space-y-1">

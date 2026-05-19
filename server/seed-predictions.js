@@ -6,9 +6,6 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function randFloat(min, max) {
-  return min + Math.random() * (max - min);
-}
 
 function numericToLetter(gradeNum) {
   const n = Number(gradeNum);
@@ -127,8 +124,6 @@ async function run() {
       traveltime: toTravelTimeScale(s.travelTime),
     };
 
-    const confidence = Number(randFloat(0.6, 0.95).toFixed(4));
-
     await prisma.prediction.create({
       data: {
         studentId: s.id,
@@ -136,7 +131,6 @@ async function run() {
         payload: {
           features,
           predicted_grade: predictedLetter,
-          confidence,
           source: "seed",
         },
       },

@@ -137,13 +137,13 @@ def build_processed_dataset(raw: pd.DataFrame) -> pd.DataFrame:
     df["absences_scaled"] = absences.map(transform_absences).astype(int)
     df["absences_flag"] = absences.map(absence_flag).astype(int)
     df["extracurricular"] = raw["activities"].map(encode_yes_no).map(boost_extracurricular).astype(int)
-    df["Mjob"] = raw["Mjob"].map(encode_job).astype(int)
-    df["Fjob"] = raw["Fjob"].map(encode_job).astype(int)
-    df["traveltime"] = pd.to_numeric(raw["traveltime"], errors="raise").map(scale_travel_time).astype(int)
+    df["Mjob"] = 0
+    df["Fjob"] = 0
+    df["traveltime"] = 0
 
     df[LABEL_COL] = raw["G3"].map(numeric_to_letter).astype(str)
 
-    # Final strict ordering
+  
     df = df[FEATURE_ORDER + [LABEL_COL]].copy()
     return df
 
@@ -154,7 +154,7 @@ def load_dataset(path: Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Dataset missing columns: {missing}")
 
-    # Ensure consistent ordering and types
+   
     df = df[FEATURE_ORDER + [LABEL_COL]].copy()
     for col in FEATURE_ORDER:
         df[col] = pd.to_numeric(df[col], errors="raise")

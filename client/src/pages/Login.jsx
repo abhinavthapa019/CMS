@@ -70,9 +70,6 @@ export default function Login() {
                 <span className="material-symbols-outlined text-[18px] text-primary">login</span>
                 <span>Sign in to continue</span>
               </div>
-              <p className="mt-3 text-xs text-secondary">
-                Student demo password: <strong>student123</strong>. Email format: <strong>firstname.lastname1@students.local</strong>
-              </p>
             </div>
             <form className="space-y-6" onSubmit={onSubmit}>
               <div className="space-y-2">

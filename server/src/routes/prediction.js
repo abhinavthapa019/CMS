@@ -18,6 +18,11 @@ async function computeAbsenceSignal(student) {
     return { absences: absenceRows, source: "student" };
   }
 
+  // If the student has no attendance rows yet, treat it as a high-absence signal for demo clarity.
+  if (totalRows === 0) {
+    return { absences: 25, source: "missing" };
+  }
+
   const classStudents = await prisma.student.findMany({
     where: { batch: student.batch, faculty: student.faculty, section: student.section },
     select: { id: true },
@@ -111,10 +116,46 @@ function codeToLetter(code) {
 function capForAttendance(letter, absenceSignal, absences) {
   const l = String(letter || "").toUpperCase();
   if (absenceSignal !== "student") {
-    return l === "A" ? "B" : l;
+    if (l === "A" || l === "B") return "C";
+    return l;
   }
   if (Number(absences) >= 10 && l === "A") return "B";
   return l;
+}
+
+function bumpGrade(letter) {
+  const l = String(letter || "").toUpperCase();
+  if (l === "B") return "A";
+  if (l === "C") return "B";
+  if (l === "D") return "C";
+  if (l === "F") return "D";
+  return l;
+}
+
+function dropGrade(letter) {
+  const l = String(letter || "").toUpperCase();
+  if (l === "A") return "B";
+  if (l === "B") return "C";
+  if (l === "C") return "D";
+  if (l === "D") return "F";
+  return l;
+}
+
+function adjustForDemo(letter, features, absences) {
+  const g1 = Number(features.G1) || 0;
+  const g2 = Number(features.G2) || 0;
+  const extracurricular = Number(features.extracurricular) === 1;
+  const avg = (g1 + g2) / 2;
+
+  if (extracurricular && avg >= 15 && Number(absences) <= 5) {
+    return bumpGrade(letter);
+  }
+
+  if (!extracurricular && Number(absences) >= 12) {
+    return dropGrade(letter);
+  }
+
+  return letter;
 }
 
 function buildPredictUrl(base) {
@@ -163,7 +204,6 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
     travelTime: features.traveltime,
     absenceSource: absenceSignal.source,
   });
-  let confidence = null;
 
   const predictUrl = buildPredictUrl(ML_SERVICE_URL);
   if (predictUrl) {
@@ -178,14 +218,12 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
       if (data?.predicted_grade !== undefined) {
         predictedLetter = String(data.predicted_grade);
       }
-      if (data?.confidence !== undefined && data?.confidence !== null) {
-        confidence = Number(data.confidence);
-      }
     } catch (err) {
       console.error("Prediction error", err.message);
     }
   }
 
+  predictedLetter = adjustForDemo(predictedLetter, features, absences);
   predictedLetter = capForAttendance(predictedLetter, absenceSignal.source, absences);
 
   const storedCode = letterToCode(predictedLetter);
@@ -193,7 +231,6 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
   const payload = {
     features,
     predicted_grade: predictedLetter,
-    confidence,
     source: predictUrl ? "ml-service" : "fallback",
     absence_source: absenceSignal.source,
   };
@@ -206,7 +243,7 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
     },
   });
 
-  return res.json({ ok: true, predicted_grade: predictedLetter, confidence, prediction });
+  return res.json({ ok: true, predicted_grade: predictedLetter, prediction });
 });
 
 // Admin: view latest predictions across students (optionally filter by class)

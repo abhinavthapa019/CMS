@@ -80,7 +80,6 @@ def scale_travel_time(value: int) -> int:
 
 class PredictResponse(BaseModel):
     predicted_grade: str
-    confidence: float
 
 
 def load_bundle(path: Path) -> Dict[str, Any]:
@@ -130,7 +129,9 @@ def predict(req: PredictRequest) -> PredictResponse:
     payload["absences_scaled"] = transform_absences(payload["absences"])
     payload["absences_flag"] = absence_flag(payload["absences"])
     payload["extracurricular"] = boost_extracurricular(payload["extracurricular"])
-    payload["traveltime"] = scale_travel_time(payload["traveltime"])
+    payload["Mjob"] = 0
+    payload["Fjob"] = 0
+    payload["traveltime"] = 0
     try:
         row = [payload[name] for name in expected]
         x = pd.DataFrame([row], columns=list(expected), dtype=float)
@@ -144,13 +145,11 @@ def predict(req: PredictRequest) -> PredictResponse:
             classes = list(getattr(model, "classes_", []))
             idx = int(np.argmax(probs))
             pred = str(classes[idx]) if classes else str(model.predict(x)[0])
-            conf = float(probs[idx])
         else:
             pred = str(model.predict(x)[0])
-            conf = 1.0
 
-        logger.info("predict ok grade=%s confidence=%.4f", pred, conf)
-        return PredictResponse(predicted_grade=pred, confidence=conf)
+        logger.info("predict ok grade=%s", pred)
+        return PredictResponse(predicted_grade=pred)
     except Exception as e:
         logger.exception("predict failed")
         raise HTTPException(status_code=500, detail="Prediction failed") from e
