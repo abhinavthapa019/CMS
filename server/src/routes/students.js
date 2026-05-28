@@ -268,6 +268,66 @@ router.get("/api/students", requireAuth(), async (req, res) => {
   return res.json({ ok: true, students });
 });
 
+router.get("/api/students/me", requireAuth(Role.STUDENT), async (req, res) => {
+  try {
+    const student = await prisma.student.findFirst({
+      where: { userId: req.user.userId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        rollNumber: true,
+        batch: true,
+        faculty: true,
+        section: true,
+        motherJob: true,
+        fatherJob: true,
+        travelTime: true,
+        createdAt: true,
+      },
+    });
+
+    if (!student) {
+      return res.status(404).json({ ok: false, error: "Student profile not found" });
+    }
+
+    return res.json({ ok: true, student });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: "Failed to load student profile" });
+  }
+});
+
+router.get("/api/students/me/marks", requireAuth(Role.STUDENT), async (req, res) => {
+  try {
+    const student = await prisma.student.findFirst({
+      where: { userId: req.user.userId },
+      select: { id: true },
+    });
+
+    if (!student) {
+      return res.status(404).json({ ok: false, error: "Student profile not found" });
+    }
+
+    const marks = await prisma.mark.findMany({
+      where: { studentId: student.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        g1: true,
+        g2: true,
+        finalGrade: true,
+        activities: true,
+        createdAt: true,
+        teacher: { select: { id: true, name: true } },
+      },
+    });
+
+    return res.json({ ok: true, marks });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: "Failed to load marks" });
+  }
+});
+
 router.get("/api/students/attendance-summary", requireAuth(Role.ADMIN), async (req, res) => {
   const validBatch = req.query.batch ? Object.values(AcademicBatch).includes(req.query.batch) : true;
   const validFaculty = req.query.faculty ? Object.values(Faculty).includes(req.query.faculty) : true;

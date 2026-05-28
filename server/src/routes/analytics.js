@@ -314,6 +314,90 @@ router.get(["/api/analytics/teacher/:teacherId", "/analytics/teacher/:teacherId"
   });
 });
 
+router.get(["/api/analytics/student/overview", "/analytics/student/overview"], requireAuth(Role.STUDENT), async (req, res) => {
+  const monthParam = req.query.month ? Number(req.query.month) : null;
+  const yearParam = req.query.year ? Number(req.query.year) : null;
+  const validMonth = monthParam && Number.isInteger(monthParam) && monthParam >= 1 && monthParam <= 12;
+  const validYear = yearParam && Number.isInteger(yearParam) && yearParam >= 2000 && yearParam <= 2100;
+
+  const monthRange = validMonth && validYear
+    ? getMonthRangeUtc(yearParam, monthParam)
+    : getCurrentMonthRangeUtc();
+  const periodLabel = validMonth && validYear
+    ? new Date(Date.UTC(yearParam, monthParam - 1, 1)).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+    : getCurrentMonthLabel();
+
+  const student = await prisma.student.findFirst({
+    where: { userId: req.user.userId },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      rollNumber: true,
+      batch: true,
+      faculty: true,
+      section: true,
+    },
+  });
+
+  if (!student) {
+    return res.status(404).json({ ok: false, error: "Student profile not found" });
+  }
+
+  const attendanceRows = await prisma.attendance.findMany({
+    where: {
+      studentId: student.id,
+      date: {
+        gte: monthRange.start,
+        lt: monthRange.end,
+      },
+    },
+    select: {
+      present: true,
+      date: true,
+    },
+    orderBy: { date: "asc" },
+  });
+
+  const totalRows = attendanceRows.length;
+  const totalPresent = attendanceRows.reduce((acc, row) => acc + (row.present ? 1 : 0), 0);
+  const totalAbsent = Math.max(totalRows - totalPresent, 0);
+
+  const recentAttendance = await prisma.attendance.findMany({
+    where: {
+      studentId: student.id,
+      date: {
+        gte: monthRange.start,
+        lt: monthRange.end,
+      },
+    },
+    select: {
+      present: true,
+      date: true,
+    },
+    orderBy: { date: "desc" },
+    take: 10,
+  });
+
+  return res.json({
+    ok: true,
+    periodLabel,
+    student,
+    kpis: {
+      attendancePercent: withPercent(totalPresent, totalRows),
+      totalPresent,
+      totalAbsent,
+      totalDays: totalRows,
+    },
+    distribution: [
+      { name: "Present", value: totalPresent },
+      { name: "Absent", value: totalAbsent },
+    ],
+    trend: buildTrend(attendanceRows),
+    recentAttendance,
+  });
+});
+
 function getMonthRangeUtc(year, month) {
   const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
   const end = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));

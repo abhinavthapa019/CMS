@@ -2,6 +2,42 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../state/useAuth.jsx";
 import { api } from "../api";
+import {
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+const CHART_COLORS = {
+  present: "var(--color-primary)",
+  absent: "var(--color-error)",
+  neutral: "var(--color-outline-variant)",
+  surface: "var(--color-surface-container-lowest)",
+  surfaceBorder: "var(--color-outline-variant)",
+  text: "var(--color-on-surface)",
+  textSecondary: "var(--color-secondary)",
+};
+
+const PIE_COLORS = [CHART_COLORS.present, CHART_COLORS.absent];
+
+function formatShortDateTick(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function piePercentLabel({ percent }) {
+  return `${Math.round((percent || 0) * 100)}%`;
+}
 
 export default function Student() {
   const { user, token, logout } = useAuth();
@@ -10,8 +46,15 @@ export default function Student() {
   const [notices, setNotices] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [fees, setFees] = useState([]);
+  const [studentProfile, setStudentProfile] = useState(null);
+  const [marks, setMarks] = useState([]);
+  const [attendanceAnalytics, setAttendanceAnalytics] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [performanceLoading, setPerformanceLoading] = useState(true);
+  const [performanceError, setPerformanceError] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [submittingAssignmentId, setSubmittingAssignmentId] = useState(null);
   const [notesByAssignment, setNotesByAssignment] = useState({});
   const [filesByAssignment, setFilesByAssignment] = useState({});
@@ -25,15 +68,38 @@ export default function Student() {
       api("/api/notices", { token }),
       api("/api/assignments/student", { token }),
       api("/api/fees/student", { token }),
+      api("/api/students/me", { token }),
+      api("/api/students/me/marks", { token }),
     ])
-      .then(([noticeRes, assignmentRes, feeRes]) => {
+      .then(([noticeRes, assignmentRes, feeRes, studentRes, marksRes]) => {
         setNotices(noticeRes.notices || []);
         setAssignments(assignmentRes.assignments || []);
         setFees(feeRes.fees || []);
+        setStudentProfile(studentRes.student || null);
+        setMarks(marksRes.marks || []);
       })
       .catch((e) => setError(e.message || "Failed to load student data"))
       .finally(() => setLoading(false));
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const query = new URLSearchParams();
+    if (selectedMonth && selectedYear) {
+      query.set("month", String(selectedMonth));
+      query.set("year", String(selectedYear));
+    }
+    const path = query.toString()
+      ? `/api/analytics/student/overview?${query}`
+      : "/api/analytics/student/overview";
+
+    setPerformanceLoading(true);
+    setPerformanceError("");
+    api(path, { token })
+      .then((res) => setAttendanceAnalytics(res))
+      .catch((e) => setPerformanceError(e.message || "Failed to load analytics"))
+      .finally(() => setPerformanceLoading(false));
+  }, [token, selectedMonth, selectedYear]);
 
   async function markRead(id) {
     try {
@@ -76,6 +142,34 @@ export default function Student() {
     setError("");
     navigate(`/student/fees/pay/${feeId}`);
   }
+
+  const periodLabel = attendanceAnalytics?.periodLabel || "Current Month";
+  const attendanceKpis = attendanceAnalytics?.kpis || {
+    attendancePercent: 0,
+    totalPresent: 0,
+    totalAbsent: 0,
+    totalDays: 0,
+  };
+  const attendanceTrend = attendanceAnalytics?.trend || [];
+  const attendanceDistribution = attendanceAnalytics?.distribution || [];
+  const recentAttendance = attendanceAnalytics?.recentAttendance || [];
+
+  const monthOptions = [
+    { value: 1, label: "January" },
+    { value: 2, label: "February" },
+    { value: 3, label: "March" },
+    { value: 4, label: "April" },
+    { value: 5, label: "May" },
+    { value: 6, label: "June" },
+    { value: 7, label: "July" },
+    { value: 8, label: "August" },
+    { value: 9, label: "September" },
+    { value: 10, label: "October" },
+    { value: 11, label: "November" },
+    { value: 12, label: "December" },
+  ];
+  const yearOptions = [selectedYear - 1, selectedYear, selectedYear + 1];
+  const latestMark = marks[0] || null;
 
   return (
     <div className="min-h-screen bg-background text-on-surface pb-16">
@@ -124,6 +218,13 @@ export default function Student() {
             className={`px-4 py-2 rounded-full text-sm font-semibold ${tab === "fees" ? "bg-primary text-on-primary" : "bg-surface-container-high text-secondary"}`}
           >
             Fees
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("performance")}
+            className={`px-4 py-2 rounded-full text-sm font-semibold ${tab === "performance" ? "bg-primary text-on-primary" : "bg-surface-container-high text-secondary"}`}
+          >
+            Performance
           </button>
         </div>
 
@@ -245,6 +346,205 @@ export default function Student() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : null}
+
+        {tab === "performance" ? (
+          <div className="space-y-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Attendance & Grades</h2>
+                <p className="text-sm text-secondary">Track your monthly attendance and recent grades at a glance.</p>
+                {studentProfile ? (
+                  <p className="text-xs text-secondary mt-1">
+                    Class: {studentProfile.batch} {studentProfile.faculty} {studentProfile.section} • Roll: {studentProfile.rollNumber}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  className="border rounded-lg px-3 py-2 text-sm bg-surface-container-high"
+                >
+                  {monthOptions.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="border rounded-lg px-3 py-2 text-sm bg-surface-container-high"
+                >
+                  {yearOptions.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {performanceError ? <p className="text-sm text-error">{performanceError}</p> : null}
+            {performanceLoading ? <p className="text-secondary">Loading analytics...</p> : null}
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-xl border bg-surface-container-high p-4">
+                <div className="text-xs uppercase text-secondary">Attendance %</div>
+                <div className="text-2xl font-bold mt-1">{attendanceKpis.attendancePercent}%</div>
+                <div className="text-xs text-secondary mt-1">{periodLabel}</div>
+              </div>
+              <div className="rounded-xl border bg-surface-container-high p-4">
+                <div className="text-xs uppercase text-secondary">Present Days</div>
+                <div className="text-2xl font-bold mt-1">{attendanceKpis.totalPresent}</div>
+              </div>
+              <div className="rounded-xl border bg-surface-container-high p-4">
+                <div className="text-xs uppercase text-secondary">Absent Days</div>
+                <div className="text-2xl font-bold mt-1">{attendanceKpis.totalAbsent}</div>
+              </div>
+              <div className="rounded-xl border bg-surface-container-high p-4">
+                <div className="text-xs uppercase text-secondary">Total Days</div>
+                <div className="text-2xl font-bold mt-1">{attendanceKpis.totalDays}</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2 rounded-2xl border bg-surface-container-high p-5">
+                <h3 className="font-semibold text-lg mb-4">Attendance Trend ({periodLabel})</h3>
+                <div className="w-full h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={attendanceTrend} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+                      <CartesianGrid stroke={CHART_COLORS.neutral} strokeDasharray="3 3" opacity={0.35} />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={formatShortDateTick}
+                        minTickGap={24}
+                        tick={{ fill: CHART_COLORS.textSecondary, fontSize: 12 }}
+                        axisLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                        tickLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tick={{ fill: CHART_COLORS.textSecondary, fontSize: 12 }}
+                        axisLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                        tickLine={{ stroke: CHART_COLORS.surfaceBorder, opacity: 0.6 }}
+                      />
+                      <Tooltip
+                        formatter={(value, name) => [value, name === "present" ? "Present" : "Absent"]}
+                        contentStyle={{ backgroundColor: CHART_COLORS.surface, borderColor: CHART_COLORS.surfaceBorder, color: CHART_COLORS.text, borderRadius: 12 }}
+                        itemStyle={{ color: CHART_COLORS.text }}
+                        labelStyle={{ color: CHART_COLORS.textSecondary }}
+                      />
+                      <Legend wrapperStyle={{ color: CHART_COLORS.textSecondary, fontSize: 12 }} />
+                      <Line type="monotone" dataKey="present" name="Present" stroke={CHART_COLORS.present} strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="absent" name="Absent" stroke={CHART_COLORS.absent} strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="rounded-2xl border bg-surface-container-high p-5">
+                <h3 className="font-semibold text-lg mb-4">Present vs Absent</h3>
+                <div className="w-full h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={attendanceDistribution}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={48}
+                        outerRadius={90}
+                        label={piePercentLabel}
+                        labelLine={false}
+                      >
+                        {attendanceDistribution.map((entry, index) => (
+                          <Cell key={`${entry.name}-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ backgroundColor: CHART_COLORS.surface, borderColor: CHART_COLORS.surfaceBorder, color: CHART_COLORS.text, borderRadius: 12 }}
+                        itemStyle={{ color: CHART_COLORS.text }}
+                        labelStyle={{ color: CHART_COLORS.textSecondary }}
+                      />
+                      <Legend wrapperStyle={{ color: CHART_COLORS.textSecondary, fontSize: 12 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="text-xs text-secondary mt-2">Use the month selector to update the chart.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-2xl border bg-surface-container-high p-5">
+                <h3 className="font-semibold text-lg mb-4">Recent Attendance</h3>
+                {recentAttendance.length === 0 ? (
+                  <p className="text-sm text-secondary">No attendance recorded for this month yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentAttendance.map((row, idx) => (
+                      <div key={`${row.date}-${idx}`} className="flex items-center justify-between border-b pb-2">
+                        <span className="text-sm">{new Date(row.date).toLocaleDateString()}</span>
+                        <span className={`text-xs font-semibold ${row.present ? "text-primary" : "text-error"}`}>
+                          {row.present ? "Present" : "Absent"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-2xl border bg-surface-container-high p-5">
+                <h3 className="font-semibold text-lg mb-4">Latest Grade</h3>
+                {!latestMark ? (
+                  <p className="text-sm text-secondary">No grades recorded yet. Your teachers will update this section.</p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-secondary">Recorded</div>
+                      <div className="text-sm">{new Date(latestMark.createdAt).toLocaleDateString()}</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg border bg-surface-container-low p-3">
+                        <div className="text-xs text-secondary">G1</div>
+                        <div className="text-lg font-semibold">{latestMark.g1}</div>
+                      </div>
+                      <div className="rounded-lg border bg-surface-container-low p-3">
+                        <div className="text-xs text-secondary">G2</div>
+                        <div className="text-lg font-semibold">{latestMark.g2}</div>
+                      </div>
+                      <div className="rounded-lg border bg-surface-container-low p-3">
+                        <div className="text-xs text-secondary">Final</div>
+                        <div className="text-lg font-semibold">{latestMark.finalGrade ?? "N/A"}</div>
+                      </div>
+                      <div className="rounded-lg border bg-surface-container-low p-3">
+                        <div className="text-xs text-secondary">Activities</div>
+                        <div className="text-lg font-semibold">{latestMark.activities ? "Yes" : "No"}</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-secondary">Teacher: {latestMark.teacher?.name || "Unknown"}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-surface-container-high p-5">
+              <h3 className="font-semibold text-lg mb-4">Grade History</h3>
+              {marks.length === 0 ? (
+                <p className="text-sm text-secondary">No grades recorded yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {marks.slice(0, 6).map((mark) => (
+                    <div key={mark.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b pb-2">
+                      <div>
+                        <div className="font-medium">{new Date(mark.createdAt).toLocaleDateString()}</div>
+                        <div className="text-xs text-secondary">Teacher: {mark.teacher?.name || "Unknown"}</div>
+                      </div>
+                      <div className="flex gap-3 text-sm mt-2 sm:mt-0">
+                        <span>G1: {mark.g1}</span>
+                        <span>G2: {mark.g2}</span>
+                        <span>Final: {mark.finalGrade ?? "N/A"}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
       </div>
