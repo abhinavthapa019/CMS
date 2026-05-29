@@ -105,9 +105,21 @@ const createStudentSchema = z.object({
     batch: z.nativeEnum(AcademicBatch),
     faculty: z.nativeEnum(Faculty),
     section: z.nativeEnum(Section),
+    grade8Score: z.number().min(0).max(100),
+    grade9Score: z.number().min(0).max(100),
+    grade10Score: z.number().min(0).max(100),
     motherJob: z.nativeEnum(Job),
     fatherJob: z.nativeEnum(Job),
     travelTime: z.number().int().min(0).max(10),
+  }),
+});
+
+const updateStudentScoresSchema = z.object({
+  params: z.object({ id: z.string() }),
+  body: z.object({
+    grade8Score: z.number().min(0).max(100),
+    grade9Score: z.number().min(0).max(100),
+    grade10Score: z.number().min(0).max(100),
   }),
 });
 
@@ -176,6 +188,9 @@ router.post("/api/students", requireAuth(Role.ADMIN), validate(createStudentSche
           batch: true,
           faculty: true,
           section: true,
+          grade8Score: true,
+          grade9Score: true,
+          grade10Score: true,
           motherJob: true,
           fatherJob: true,
           travelTime: true,
@@ -258,6 +273,9 @@ router.get("/api/students", requireAuth(), async (req, res) => {
       batch: true,
       faculty: true,
       section: true,
+      grade8Score: true,
+      grade9Score: true,
+      grade10Score: true,
       motherJob: true,
       fatherJob: true,
       travelTime: true,
@@ -280,6 +298,9 @@ router.get("/api/students/me", requireAuth(Role.STUDENT), async (req, res) => {
         batch: true,
         faculty: true,
         section: true,
+        grade8Score: true,
+        grade9Score: true,
+        grade10Score: true,
         motherJob: true,
         fatherJob: true,
         travelTime: true,
@@ -315,10 +336,11 @@ router.get("/api/students/me/marks", requireAuth(Role.STUDENT), async (req, res)
         id: true,
         g1: true,
         g2: true,
-        finalGrade: true,
         activities: true,
+        marks: true,
         createdAt: true,
         teacher: { select: { id: true, name: true } },
+        subject: { select: { id: true, name: true } },
       },
     });
 
@@ -490,6 +512,48 @@ router.get("/api/students/:id", requireAuth(), async (req, res) => {
   return res.json({ ok: true, student });
 });
 
+router.put("/api/students/:id", requireAuth(Role.ADMIN), validate(updateStudentScoresSchema), async (req, res) => {
+  const studentId = Number(req.params.id);
+  if (!Number.isInteger(studentId)) {
+    return res.status(400).json({ ok: false, error: "Invalid student id" });
+  }
+
+  const existing = await prisma.student.findUnique({ where: { id: studentId } });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "Student not found" });
+  }
+
+  const { grade8Score, grade9Score, grade10Score } = req.validated.body;
+
+  const student = await prisma.student.update({
+    where: { id: studentId },
+    data: {
+      grade8Score,
+      grade9Score,
+      grade10Score,
+    },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      rollNumber: true,
+      batch: true,
+      faculty: true,
+      section: true,
+      grade8Score: true,
+      grade9Score: true,
+      grade10Score: true,
+      motherJob: true,
+      fatherJob: true,
+      travelTime: true,
+      userId: true,
+      user: { select: { email: true } },
+    },
+  });
+
+  return res.json({ ok: true, student });
+});
+
 router.delete("/api/students/:id", requireAuth(Role.ADMIN), async (req, res) => {
   const studentId = Number(req.params.id);
   if (!Number.isInteger(studentId)) {
@@ -596,9 +660,9 @@ router.get("/api/students/:id/attendance", requireAuth(), async (req, res) => {
 const marksSchema = z.object({
   params: z.object({ id: z.string() }),
   body: z.object({
-    g1: z.number().int().min(0).max(20),
-    g2: z.number().int().min(0).max(20),
-    finalGrade: z.number().int().min(0).max(20).optional(),
+    subjectId: z.number().int().positive(),
+    g1: z.number().min(0).max(100),
+    g2: z.number().min(0).max(100),
     activities: z.boolean().optional().default(false),
   }),
 });
@@ -608,16 +672,46 @@ router.post("/api/students/:id/marks", requireAuth(), validate(marksSchema), asy
     return res.status(403).json({ ok: false, error: "Forbidden" });
   }
   const studentId = Number(req.params.id);
-  const { g1, g2, finalGrade, activities } = req.validated.body;
+  const { subjectId, g1, g2, activities } = req.validated.body;
+  const subject = await prisma.subject.findUnique({ where: { id: subjectId } });
+  if (!subject) {
+    return res.status(404).json({ ok: false, error: "Subject not found" });
+  }
   try {
-    const mark = await prisma.mark.create({
-      data: {
-        g1,
-        g2,
-        finalGrade,
-        activities,
+    const g1Scaled = Number(g1) / 5;
+    const g2Scaled = Number(g2) / 5;
+    const marks = ((g1Scaled + g2Scaled) / 2) * 5;
+    const mark = await prisma.mark.upsert({
+      where: {
+        studentId_subjectId: {
+          studentId,
+          subjectId,
+        },
+      },
+      create: {
         studentId,
+        subjectId,
+        g1: g1Scaled,
+        g2: g2Scaled,
+        activities,
+        marks,
         teacherId: req.user.userId,
+      },
+      update: {
+        g1: g1Scaled,
+        g2: g2Scaled,
+        activities,
+        marks,
+        teacherId: req.user.userId,
+      },
+      select: {
+        id: true,
+        g1: true,
+        g2: true,
+        activities: true,
+        marks: true,
+        createdAt: true,
+        subject: { select: { id: true, name: true } },
       },
     });
     return res.status(201).json({ ok: true, mark });
@@ -628,9 +722,25 @@ router.post("/api/students/:id/marks", requireAuth(), validate(marksSchema), asy
 
 router.get("/api/students/:id/marks/latest", requireAuth(), async (req, res) => {
   const studentId = Number(req.params.id);
+  const subjectId = req.query.subjectId ? Number(req.query.subjectId) : null;
+  if (req.query.subjectId && !Number.isInteger(subjectId)) {
+    return res.status(400).json({ ok: false, error: "Invalid subjectId" });
+  }
+
+  const where = { studentId };
+  if (subjectId) where.subjectId = subjectId;
   const mark = await prisma.mark.findFirst({
-    where: { studentId },
+    where,
     orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      g1: true,
+      g2: true,
+      activities: true,
+      marks: true,
+      createdAt: true,
+      subject: { select: { id: true, name: true } },
+    },
   });
   if (!mark) return res.status(404).json({ ok: false, error: "No marks found" });
   return res.json({ ok: true, mark });

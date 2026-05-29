@@ -5,20 +5,22 @@ This folder contains the Python-based ML microservice used by the Node backend f
 ## Endpoints
 
 - `GET /health` → `{ "status": "ok" }`
-- `POST /predict` → `{ "predicted_grade": "B", "confidence": 0.82 }`
+- `POST /predict` → `{ "predicted_grade": 78.4 }`
 
 ## Features (strict order)
 
-Training and inference use the exact 7-feature set below (order is enforced server-side):
+Training and inference use the exact 10-feature set below (order is enforced server-side):
 
 1. `G1`
-2. `G2` (bucketed)
-3. `absences_scaled` (absences * 2, capped at 30)
-4. `absences_flag` (1 if absences >= 10)
-5. `extracurricular` (multiplied by 3)
-6. `Mjob`
-7. `Fjob`
-8. `traveltime` (scaled 1..4 -> 2..8)
+2. `G2`
+3. `grade_8_score`
+4. `grade_9_score`
+5. `grade_10_score`
+6. `traveltime`
+7. `absences`
+8. `Mjob`
+9. `Fjob`
+10. `activities`
 
 ## Local setup (recommended)
 

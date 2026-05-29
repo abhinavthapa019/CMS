@@ -49,13 +49,14 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
 
   const [marksForm, setMarksForm] = useState({
     studentId: "",
+    subjectId: "",
     g1: "",
     g2: "",
-    finalGrade: "",
     activities: false,
   });
 
   const [predictionStudentId, setPredictionStudentId] = useState("");
+  const [predictionSubjectId, setPredictionSubjectId] = useState("");
   const [predictionResult, setPredictionResult] = useState(null);
   const [predictionBatchResult, setPredictionBatchResult] = useState(null);
 
@@ -151,6 +152,17 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     [attendanceTakenDates, attendanceDate]
   );
 
+  const subjectOptions = useMemo(() => {
+    const map = new Map();
+    for (const a of assignments) {
+      const batchOk = !a.batch || a.batch === classFilters.batch;
+      const facultyOk = !a.subject?.faculty || a.subject?.faculty === classFilters.faculty;
+      if (!batchOk || !facultyOk) continue;
+      if (a.subject) map.set(a.subject.id, a.subject);
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [assignments, classFilters.batch, classFilters.faculty]);
+
   const selectedAttendanceAssignment = useMemo(
     () => classTeacherAssignments.find((row) => (
       row.batch === attendanceClassFilters.batch
@@ -237,15 +249,20 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
   }, [loadStudents, classFilters.batch, classFilters.faculty, classFilters.section]);
 
   useEffect(() => {
-    if (!token || students.length === 0) {
+    if (!token || students.length === 0 || !marksForm.subjectId) {
       setLatestMarks([]);
       return;
     }
 
     const loadLatestMarks = async () => {
+      const subjectId = Number(marksForm.subjectId);
+      if (!Number.isInteger(subjectId)) {
+        setLatestMarks([]);
+        return;
+      }
       const results = await Promise.allSettled(
         students.map((student) =>
-          api(`/api/students/${student.id}/marks/latest`, { token })
+          api(`/api/students/${student.id}/marks/latest?subjectId=${subjectId}`, { token })
             .then((res) => ({ student, mark: res.mark }))
         )
       );
@@ -258,7 +275,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     };
 
     loadLatestMarks().catch(() => setLatestMarks([]));
-  }, [token, students]);
+  }, [token, students, marksForm.subjectId]);
 
   useEffect(() => {
     loadNotices();
@@ -287,6 +304,16 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
       setClassFilters({ batch: first.batch, faculty: first.faculty, section: first.section });
     }
   }, [allowedClassOptions, classKey]);
+
+  useEffect(() => {
+    if (subjectOptions.length === 0) return;
+    if (!marksForm.subjectId) {
+      setMarksForm((prev) => ({ ...prev, subjectId: String(subjectOptions[0].id) }));
+    }
+    if (!predictionSubjectId) {
+      setPredictionSubjectId(String(subjectOptions[0].id));
+    }
+  }, [subjectOptions, marksForm.subjectId, predictionSubjectId]);
 
   useEffect(() => {
     if (attendanceClassOptions.length === 0) {
@@ -418,18 +445,25 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     setNotice("");
     try {
       const studentId = Number(marksForm.studentId);
-
-      const g1OutOf20 = Math.max(0, Math.min(20, Math.round(Number(marksForm.g1) / 5)));
-      const g2OutOf20 = Math.max(0, Math.min(20, Math.round(Number(marksForm.g2) / 5)));
+      const subjectId = Number(marksForm.subjectId);
+      const g1 = Number(marksForm.g1);
+      const g2 = Number(marksForm.g2);
+      if (!Number.isInteger(subjectId)) {
+        throw new Error("Select a subject for marks entry.");
+      }
+      if (!Number.isFinite(g1) || g1 < 0 || g1 > 100) {
+        throw new Error("Midterm must be between 0 and 100.");
+      }
+      if (!Number.isFinite(g2) || g2 < 0 || g2 > 100) {
+        throw new Error("Pre-Board must be between 0 and 100.");
+      }
 
       const payload = {
-        g1: g1OutOf20,
-        g2: g2OutOf20,
-        activities: marksForm.activities,
+        subjectId,
+        g1,
+        g2,
+        activities: !!marksForm.activities,
       };
-      if (marksForm.finalGrade !== "") {
-        payload.finalGrade = Number(marksForm.finalGrade);
-      }
 
       const res = await api(`/api/students/${studentId}/marks`, {
         token,
@@ -461,13 +495,18 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
     setNotice("");
     try {
       const studentId = Number(predictionStudentId);
+      const subjectId = Number(predictionSubjectId);
       const res = await api("/api/predict-grade", {
         token,
         method: "POST",
-        body: { studentId },
+        body: { studentId, subjectId },
       });
 
-      setPredictionResult({ studentId, predictedGrade: res.predicted_grade });
+      setPredictionResult({
+        studentId,
+        predictedGrade: res.predicted_grade,
+        predictedScore: res.predicted_score,
+      });
       setPredictionCount((v) => v + 1);
       setNotice("Prediction completed.");
 
@@ -490,6 +529,11 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
       setError("No students found in this class.");
       return;
     }
+    const subjectId = Number(predictionSubjectId);
+    if (!Number.isInteger(subjectId)) {
+      setError("Select a subject for prediction.");
+      return;
+    }
 
     setSubmittingPredictionBatch(true);
     setError("");
@@ -500,7 +544,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
           api("/api/predict-grade", {
             token,
             method: "POST",
-            body: { studentId: student.id },
+            body: { studentId: student.id, subjectId },
           }).then((res) => ({
             studentId: student.id,
             name: `${student.firstName} ${student.lastName}`,
@@ -614,6 +658,7 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
         {tab === "marks" ? (
           <MarksSection
             students={students}
+            subjects={subjectOptions}
             latestMarks={latestMarks}
             marksForm={marksForm}
             onMarksChange={(field, value) => setMarksForm((prev) => ({ ...prev, [field]: value }))}
@@ -625,8 +670,11 @@ export default function TeacherWorkspace({ user, token, onLogout }) {
         {tab === "prediction" ? (
           <PredictionSection
             students={students}
+            subjects={subjectOptions}
             predictionStudentId={predictionStudentId}
             onPredictionStudentChange={setPredictionStudentId}
+            predictionSubjectId={predictionSubjectId}
+            onPredictionSubjectChange={setPredictionSubjectId}
             onPredict={handlePredict}
             onPredictClass={handlePredictClass}
             submitting={submittingPrediction}

@@ -499,22 +499,18 @@ export default function Student() {
                       <div className="text-sm text-secondary">Recorded</div>
                       <div className="text-sm">{new Date(latestMark.createdAt).toLocaleDateString()}</div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="rounded-lg border bg-surface-container-low p-3">
-                        <div className="text-xs text-secondary">G1</div>
-                        <div className="text-lg font-semibold">{latestMark.g1}</div>
+                        <div className="text-xs text-secondary">Subject</div>
+                        <div className="text-lg font-semibold">{latestMark.subject?.name || "-"}</div>
                       </div>
                       <div className="rounded-lg border bg-surface-container-low p-3">
-                        <div className="text-xs text-secondary">G2</div>
-                        <div className="text-lg font-semibold">{latestMark.g2}</div>
+                        <div className="text-xs text-secondary">Midterm</div>
+                        <div className="text-lg font-semibold">{latestMark.g1 !== undefined && latestMark.g1 !== null ? (Number(latestMark.g1) * 5).toFixed(1) : "-"}</div>
                       </div>
                       <div className="rounded-lg border bg-surface-container-low p-3">
-                        <div className="text-xs text-secondary">Final</div>
-                        <div className="text-lg font-semibold">{latestMark.finalGrade ?? "N/A"}</div>
-                      </div>
-                      <div className="rounded-lg border bg-surface-container-low p-3">
-                        <div className="text-xs text-secondary">Activities</div>
-                        <div className="text-lg font-semibold">{latestMark.activities ? "Yes" : "No"}</div>
+                        <div className="text-xs text-secondary">Pre-Board</div>
+                        <div className="text-lg font-semibold">{latestMark.g2 !== undefined && latestMark.g2 !== null ? (Number(latestMark.g2) * 5).toFixed(1) : "-"}</div>
                       </div>
                     </div>
                     <div className="text-xs text-secondary">Teacher: {latestMark.teacher?.name || "Unknown"}</div>
@@ -536,9 +532,9 @@ export default function Student() {
                         <div className="text-xs text-secondary">Teacher: {mark.teacher?.name || "Unknown"}</div>
                       </div>
                       <div className="flex gap-3 text-sm mt-2 sm:mt-0">
-                        <span>G1: {mark.g1}</span>
-                        <span>G2: {mark.g2}</span>
-                        <span>Final: {mark.finalGrade ?? "N/A"}</span>
+                        <span>Subject: {mark.subject?.name || "-"}</span>
+                        <span>Midterm: {mark.g1 !== undefined && mark.g1 !== null ? (Number(mark.g1) * 5).toFixed(1) : "-"}</span>
+                        <span>Pre-Board: {mark.g2 !== undefined && mark.g2 !== null ? (Number(mark.g2) * 5).toFixed(1) : "-"}</span>
                       </div>
                     </div>
                   ))}

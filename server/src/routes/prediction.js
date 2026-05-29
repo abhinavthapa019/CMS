@@ -45,32 +45,6 @@ async function computeAbsenceSignal(student) {
   return { absences: avgAbsences, source: "class-average" };
 }
 
-// Keep encoding consistent with ml-services/data/student.csv (numeric codes)
-const JOB_ENCODING = {
-  at_home: 0,
-  health: 1,
-  other: 2,
-  services: 3,
-  teacher: 4,
-};
-
-function encodeJob(job) {
-  if (!job) return JOB_ENCODING.other;
-  return JOB_ENCODING[job] ?? JOB_ENCODING.other;
-}
-
-function toTravelTimeScale(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 2;
-  if (n >= 1 && n <= 4) return Math.trunc(n);
-
-  // If travelTime was stored as minutes, bucket to 1..4
-  if (n <= 15) return 1;
-  if (n <= 30) return 2;
-  if (n <= 60) return 3;
-  return 4;
-}
-
 function numericToLetter(gradeNum) {
   const n = Number(gradeNum);
   if (!Number.isFinite(n)) return "C";
@@ -81,19 +55,6 @@ function numericToLetter(gradeNum) {
   return "F";
 }
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function heuristicPrediction({ g1, g2, absences, extracurricular, travelTime, absenceSource }) {
-  const absencePenalty = clamp(Number(absences) || 0, 0, 30) * 0.35;
-  const missingPenalty = absenceSource === "student" ? 0 : 1.5;
-  const activityBoost = extracurricular ? 1.6 : 0;
-  const travelPenalty = clamp(Number(travelTime) || 2, 1, 4) * 0.55;
-  const base = (Number(g1) || 0) * 0.55 + (Number(g2) || 0) * 0.45;
-  const score = clamp(base - absencePenalty - travelPenalty - missingPenalty + activityBoost, 0, 20);
-  return numericToLetter(score);
-}
 
 function letterToCode(letter) {
   const l = String(letter || "").toUpperCase();
@@ -123,40 +84,16 @@ function capForAttendance(letter, absenceSignal, absences) {
   return l;
 }
 
-function bumpGrade(letter) {
-  const l = String(letter || "").toUpperCase();
-  if (l === "B") return "A";
-  if (l === "C") return "B";
-  if (l === "D") return "C";
-  if (l === "F") return "D";
-  return l;
+function toTravelTimeScale(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 2;
+  if (n >= 1 && n <= 4) return Math.trunc(n);
+  if (n <= 15) return 1;
+  if (n <= 30) return 2;
+  if (n <= 60) return 3;
+  return 4;
 }
 
-function dropGrade(letter) {
-  const l = String(letter || "").toUpperCase();
-  if (l === "A") return "B";
-  if (l === "B") return "C";
-  if (l === "C") return "D";
-  if (l === "D") return "F";
-  return l;
-}
-
-function adjustForDemo(letter, features, absences) {
-  const g1 = Number(features.G1) || 0;
-  const g2 = Number(features.G2) || 0;
-  const extracurricular = Number(features.extracurricular) === 1;
-  const avg = (g1 + g2) / 2;
-
-  if (extracurricular && avg >= 15 && Number(absences) <= 5) {
-    return bumpGrade(letter);
-  }
-
-  if (!extracurricular && Number(absences) >= 12) {
-    return dropGrade(letter);
-  }
-
-  return letter;
-}
 
 function buildPredictUrl(base) {
   if (!base) return "";
@@ -168,44 +105,78 @@ function buildPredictUrl(base) {
 const predictSchema = z.object({
   body: z.object({
     studentId: z.number().int(),
+    subjectId: z.number().int().positive().optional(),
   }),
 });
 
 router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async (req, res) => {
-  const { studentId } = req.validated.body;
+  const { studentId, subjectId } = req.validated.body;
   const student = await prisma.student.findUnique({ where: { id: studentId } });
   if (!student) return res.status(404).json({ ok: false, error: "Student not found" });
 
-  const latestMark = await prisma.mark.findFirst({
-    where: { studentId },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!latestMark) return res.status(400).json({ ok: false, error: "No marks found for student" });
+  let g1 = null;
+  let g2 = null;
+  let subjectContext = null;
+  let activitiesFlag = false;
+
+  if (req.user.role === Role.TEACHER) {
+    if (!subjectId) {
+      return res.status(400).json({ ok: false, error: "subjectId is required for teacher predictions" });
+    }
+    const mark = await prisma.mark.findFirst({
+      where: { studentId, subjectId },
+      orderBy: { createdAt: "desc" },
+      select: { g1: true, g2: true, activities: true, subject: { select: { id: true, name: true } } },
+    });
+    if (!mark) return res.status(400).json({ ok: false, error: "No marks found for this subject" });
+    g1 = mark.g1;
+    g2 = mark.g2;
+    subjectContext = mark.subject;
+    activitiesFlag = !!mark.activities;
+  } else if (req.user.role === Role.ADMIN) {
+    const rows = await prisma.mark.findMany({
+      where: { studentId },
+      select: { g1: true, g2: true, activities: true },
+    });
+    if (rows.length === 0) return res.status(400).json({ ok: false, error: "No marks found for student" });
+    const g1Values = rows.map((r) => Number(r.g1)).filter((n) => Number.isFinite(n));
+    const g2Values = rows.map((r) => Number(r.g2)).filter((n) => Number.isFinite(n));
+    if (!g1Values.length || !g2Values.length) {
+      return res.status(400).json({ ok: false, error: "No G1/G2 marks found for student" });
+    }
+    g1 = g1Values.reduce((sum, n) => sum + n, 0) / g1Values.length;
+    g2 = g2Values.reduce((sum, n) => sum + n, 0) / g2Values.length;
+    activitiesFlag = rows.some((r) => r.activities);
+  } else {
+    return res.status(403).json({ ok: false, error: "Forbidden" });
+  }
+
+  if (!Number.isFinite(Number(g1)) || !Number.isFinite(Number(g2))) {
+    return res.status(400).json({ ok: false, error: "Invalid G1/G2 marks" });
+  }
 
   const absenceSignal = await computeAbsenceSignal(student);
   const absences = absenceSignal.absences;
 
-  // Required features (strict keys)
   const features = {
-    G1: latestMark.g1,
-    G2: latestMark.g2,
-    absences,
-    extracurricular: latestMark.activities ? 1 : 0,
-    Mjob: encodeJob(student.motherJob),
-    Fjob: encodeJob(student.fatherJob),
+    G1: Math.max(0, Math.min(20, Number(g1))),
+    G2: Math.max(0, Math.min(20, Number(g2))),
+    grade_8_score: Math.max(0, Math.min(20, Number(student.grade8Score || 0) / 5)),
+    grade_9_score: Math.max(0, Math.min(20, Number(student.grade9Score || 0) / 5)),
+    grade_10_score: Math.max(0, Math.min(20, Number(student.grade10Score || 0) / 5)),
     traveltime: toTravelTimeScale(student.travelTime),
+    absences: Math.max(0, Math.min(93, Number(absences) || 0)),
+    Mjob: student.motherJob || "other",
+    Fjob: student.fatherJob || "other",
+    activities: activitiesFlag ? "yes" : "no",
   };
 
-  let predictedLetter = heuristicPrediction({
-    g1: latestMark.g1,
-    g2: latestMark.g2,
-    absences,
-    extracurricular: features.extracurricular,
-    travelTime: features.traveltime,
-    absenceSource: absenceSignal.source,
-  });
+  const fallbackScore = Math.max(0, Math.min(100, ((Number(g1) + Number(g2)) / 2) * 5));
+  let predictedLetter = numericToLetter(fallbackScore / 5);
+  let predictedScore = null;
 
   const predictUrl = buildPredictUrl(ML_SERVICE_URL);
+  let source = "fallback";
   if (predictUrl) {
     try {
       const response = await fetch(predictUrl, {
@@ -216,14 +187,24 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
       if (!response.ok) throw new Error(`ML service error: ${response.status}`);
       const data = await response.json();
       if (data?.predicted_grade !== undefined) {
-        predictedLetter = String(data.predicted_grade);
+        if (typeof data.predicted_grade === "number") {
+          predictedScore = data.predicted_grade;
+          predictedLetter = numericToLetter(predictedScore / 5);
+          source = "ml-service";
+        } else {
+          predictedLetter = String(data.predicted_grade);
+          source = "ml-service";
+        }
       }
     } catch (err) {
       console.error("Prediction error", err.message);
     }
   }
 
-  predictedLetter = adjustForDemo(predictedLetter, features, absences);
+  if (predictedScore === null) {
+    predictedScore = fallbackScore;
+  }
+
   predictedLetter = capForAttendance(predictedLetter, absenceSignal.source, absences);
 
   const storedCode = letterToCode(predictedLetter);
@@ -231,7 +212,9 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
   const payload = {
     features,
     predicted_grade: predictedLetter,
-    source: predictUrl ? "ml-service" : "fallback",
+    predicted_score: predictedScore,
+    subject: subjectContext,
+    source,
     absence_source: absenceSignal.source,
   };
 
@@ -243,7 +226,7 @@ router.post("/api/predict-grade", requireAuth(), validate(predictSchema), async 
     },
   });
 
-  return res.json({ ok: true, predicted_grade: predictedLetter, prediction });
+  return res.json({ ok: true, predicted_grade: predictedLetter, predicted_score: predictedScore, prediction });
 });
 
 // Admin: view latest predictions across students (optionally filter by class)

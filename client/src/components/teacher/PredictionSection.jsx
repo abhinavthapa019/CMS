@@ -12,8 +12,11 @@ import {
 
 export default function PredictionSection({
   students,
+  subjects,
   predictionStudentId,
   onPredictionStudentChange,
+  predictionSubjectId,
+  onPredictionSubjectChange,
   onPredict,
   onPredictClass,
   submitting,
@@ -57,6 +60,21 @@ export default function PredictionSection({
           </select>
         </label>
 
+        <label className="block space-y-1">
+          <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Subject</span>
+          <select
+            required
+            className="w-full rounded-lg bg-surface-container-highest border-none"
+            value={predictionSubjectId}
+            onChange={(e) => onPredictionSubjectChange(e.target.value)}
+          >
+            <option value="">Select subject</option>
+            {subjects.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </label>
+
         <button
           type="submit"
           disabled={submitting}
@@ -86,7 +104,12 @@ export default function PredictionSection({
         ) : (
           <>
             <p className="text-sm text-secondary">Student ID: {result.studentId}</p>
-            <p className="text-4xl font-headline font-extrabold text-primary">{result.predictedGrade}</p>
+            <p className="text-4xl font-headline font-extrabold text-primary">
+              {typeof result.predictedScore === "number" ? `${result.predictedScore.toFixed(2)}%` : "-"}
+            </p>
+            {typeof result.predictedScore === "number" ? (
+              <p className="text-sm text-secondary">Predicted final percentage (0-100 scale)</p>
+            ) : null}
             <p className="text-sm text-secondary">Predicted final grade from backend aggregation and ML service/fallback logic.</p>
 
           </>

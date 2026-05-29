@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import joblib
-import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -21,65 +20,32 @@ MODEL_PATH = BASE_DIR / "model" / "random_forest.pkl"
 FEATURE_ORDER: List[str] = [
     "G1",
     "G2",
-    "absences_scaled",
-    "absences_flag",
-    "extracurricular",
+    "grade_8_score",
+    "grade_9_score",
+    "grade_10_score",
+    "traveltime",
+    "absences",
     "Mjob",
     "Fjob",
-    "traveltime",
+    "activities",
 ]
 
 
 class PredictRequest(BaseModel):
-    G1: int = Field(..., ge=0, le=20)
-    G2: int = Field(..., ge=0, le=20)
-    absences: int = Field(..., ge=0)
-    extracurricular: int = Field(..., ge=0, le=1)
-    Mjob: int = Field(..., ge=0)
-    Fjob: int = Field(..., ge=0)
+    G1: float = Field(..., ge=0, le=20)
+    G2: float = Field(..., ge=0, le=20)
+    grade_8_score: float = Field(..., ge=0, le=20)
+    grade_9_score: float = Field(..., ge=0, le=20)
+    grade_10_score: float = Field(..., ge=0, le=20)
     traveltime: int = Field(..., ge=1, le=4)
-
-
-def bucket_g2(value: float) -> int:
-    n = int(round(float(value)))
-    if n <= 6:
-        return 0
-    if n <= 9:
-        return 1
-    if n <= 12:
-        return 2
-    if n <= 15:
-        return 3
-    return 4
-
-
-def scale_g2(value: float) -> int:
-    bucket = bucket_g2(value)
-    return [0, 2, 3, 4, 5][bucket]
-
-
-def transform_absences(value: float) -> int:
-    n = int(round(float(value)))
-    n = max(0, min(n, 30))
-    return n * 3
-
-
-def absence_flag(value: float) -> int:
-    n = int(round(float(value)))
-    return 1 if n >= 10 else 0
-
-
-def boost_extracurricular(value: int) -> int:
-    return int(value) * 6
-
-
-def scale_travel_time(value: int) -> int:
-    n = int(round(float(value)))
-    return max(1, min(n, 4)) * 3
+    absences: int = Field(..., ge=0, le=93)
+    Mjob: str
+    Fjob: str
+    activities: str
 
 
 class PredictResponse(BaseModel):
-    predicted_grade: str
+    predicted_grade: float
 
 
 def load_bundle(path: Path) -> Dict[str, Any]:
@@ -125,28 +91,15 @@ def predict(req: PredictRequest) -> PredictResponse:
     expected = meta.get("feature_order") or FEATURE_ORDER
 
     payload = req.model_dump()
-    payload["G2"] = scale_g2(payload["G2"])
-    payload["absences_scaled"] = transform_absences(payload["absences"])
-    payload["absences_flag"] = absence_flag(payload["absences"])
-    payload["extracurricular"] = boost_extracurricular(payload["extracurricular"])
-    payload["Mjob"] = 0
-    payload["Fjob"] = 0
-    payload["traveltime"] = 0
     try:
         row = [payload[name] for name in expected]
-        x = pd.DataFrame([row], columns=list(expected), dtype=float)
+        x = pd.DataFrame([row], columns=list(expected))
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Missing feature: {e}")
 
     try:
-        proba = getattr(model, "predict_proba", None)
-        if callable(proba):
-            probs = model.predict_proba(x)[0]
-            classes = list(getattr(model, "classes_", []))
-            idx = int(np.argmax(probs))
-            pred = str(classes[idx]) if classes else str(model.predict(x)[0])
-        else:
-            pred = str(model.predict(x)[0])
+        value = float(model.predict(x)[0])
+        pred = max(0.0, min(100.0, value))
 
         logger.info("predict ok grade=%s", pred)
         return PredictResponse(predicted_grade=pred)

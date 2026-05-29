@@ -1,5 +1,6 @@
 export default function MarksSection({
   students,
+  subjects,
   latestMarks,
   marksForm,
   onMarksChange,
@@ -27,52 +28,55 @@ export default function MarksSection({
         </label>
 
         <label className="block space-y-1">
-          <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Mid term (out of 100)</span>
+          <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Subject</span>
+          <select
+            required
+            className="w-full rounded-lg bg-surface-container-highest border-none"
+            value={marksForm.subjectId}
+            onChange={(e) => onMarksChange("subjectId", e.target.value)}
+          >
+            <option value="">Select subject</option>
+            {subjects.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block space-y-1">
+          <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Midterm (out of 100)</span>
           <input
             required
             min={0}
             max={100}
+            step="0.1"
             type="number"
             className="w-full rounded-lg bg-surface-container-highest border-none"
             value={marksForm.g1}
             onChange={(e) => onMarksChange("g1", e.target.value)}
           />
-          
         </label>
 
         <label className="block space-y-1">
-          <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Pre board (out of 100)</span>
+          <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Pre-Board (out of 100)</span>
           <input
             required
             min={0}
             max={100}
+            step="0.1"
             type="number"
             className="w-full rounded-lg bg-surface-container-highest border-none"
             value={marksForm.g2}
             onChange={(e) => onMarksChange("g2", e.target.value)}
           />
-          
         </label>
 
-        {/* <label className="block space-y-1">
-          <span className="text-xs uppercase font-semibold tracking-wider text-secondary">Final Grade (optional)</span>
-          <input
-            min={0}
-            max={20}
-            type="number"
-            className="w-full rounded-lg bg-surface-container-highest border-none"
-            value={marksForm.finalGrade}
-            onChange={(e) => onMarksChange("finalGrade", e.target.value)}
-          />
-        </label> */}
-
-        <label className="inline-flex items-center gap-2 text-sm text-on-surface">
+        <label className="flex items-center gap-2 text-sm text-on-surface">
           <input
             type="checkbox"
-            checked={marksForm.activities}
+            checked={Boolean(marksForm.activities)}
             onChange={(e) => onMarksChange("activities", e.target.checked)}
           />
-          Extracurricular activities
+          Participates in extracurricular activities
         </label>
 
         <button
@@ -95,8 +99,9 @@ export default function MarksSection({
                 <tr className="text-left text-secondary bg-surface-container-low">
                   <th className="py-2 px-3 font-semibold">Student</th>
                   <th className="py-2 px-3 font-semibold">Roll</th>
-                  <th className="py-2 px-3 font-semibold">Mid Term</th>
-                  <th className="py-2 px-3 font-semibold">Pre Board</th>
+                  <th className="py-2 px-3 font-semibold">Subject</th>
+                  <th className="py-2 px-3 font-semibold">Midterm</th>
+                  <th className="py-2 px-3 font-semibold">Pre-Board</th>
                   <th className="py-2 px-3 font-semibold">Activities</th>
                 </tr>
               </thead>
@@ -107,8 +112,9 @@ export default function MarksSection({
                     <tr key={student.id} className="border-t border-outline-variant/10">
                       <td className="py-2 px-3 font-medium">{student.firstName} {student.lastName}</td>
                       <td className="py-2 px-3 text-secondary">#{student.rollNumber}</td>
-                      <td className="py-2 px-3 text-secondary">{mark?.g1 != null ? mark.g1 * 5 : "-"}</td>
-                      <td className="py-2 px-3 text-secondary">{mark?.g2 != null ? mark.g2 * 5 : "-"}</td>
+                      <td className="py-2 px-3 text-secondary">{mark?.subject?.name || "-"}</td>
+                      <td className="py-2 px-3 text-secondary">{mark?.g1 !== undefined && mark?.g1 !== null ? (Number(mark.g1) * 5).toFixed(1) : "-"}</td>
+                      <td className="py-2 px-3 text-secondary">{mark?.g2 !== undefined && mark?.g2 !== null ? (Number(mark.g2) * 5).toFixed(1) : "-"}</td>
                       <td className="py-2 px-3 text-secondary">{mark?.activities ? "Yes" : "No"}</td>
                     </tr>
                   ))}

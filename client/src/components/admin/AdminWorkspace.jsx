@@ -19,6 +19,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   const [submittingFee, setSubmittingFee] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState(null);
   const [deletingStudentId, setDeletingStudentId] = useState(null);
+  const [updatingStudentId, setUpdatingStudentId] = useState(null);
   const [deletingClassTeacherId, setDeletingClassTeacherId] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -53,6 +54,9 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     batch: "ELEVEN",
     faculty: "SCIENCE",
     section: "BIO",
+    grade8Score: "",
+    grade9Score: "",
+    grade10Score: "",
     motherJob: "teacher",
     fatherJob: "teacher",
     travelTime: 1,
@@ -223,12 +227,34 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     setSubmittingStudent(true);
     setError("");
     setNotice("");
+    const grade8Score = Number(studentForm.grade8Score);
+    const grade9Score = Number(studentForm.grade9Score);
+    const grade10Score = Number(studentForm.grade10Score);
+
+    if (studentForm.grade8Score === "" || !Number.isFinite(grade8Score) || grade8Score < 0 || grade8Score > 100) {
+      setError("Enter a valid Grade 8 score (0-100).");
+      setSubmittingStudent(false);
+      return;
+    }
+    if (studentForm.grade9Score === "" || !Number.isFinite(grade9Score) || grade9Score < 0 || grade9Score > 100) {
+      setError("Enter a valid Grade 9 score (0-100).");
+      setSubmittingStudent(false);
+      return;
+    }
+    if (studentForm.grade10Score === "" || !Number.isFinite(grade10Score) || grade10Score < 0 || grade10Score > 100) {
+      setError("Enter a valid Grade 10 score (0-100).");
+      setSubmittingStudent(false);
+      return;
+    }
     try {
       const res = await api("/api/students", {
         token,
         method: "POST",
         body: {
           ...studentForm,
+          grade8Score,
+          grade9Score,
+          grade10Score,
           travelTime: Number(studentForm.travelTime),
         },
       });
@@ -250,6 +276,9 @@ export default function AdminWorkspace({ user, token, onLogout }) {
         batch: "ELEVEN",
         faculty: "SCIENCE",
         section: "BIO",
+        grade8Score: "",
+        grade9Score: "",
+        grade10Score: "",
         motherJob: "teacher",
         fatherJob: "teacher",
         travelTime: 1,
@@ -259,6 +288,31 @@ export default function AdminWorkspace({ user, token, onLogout }) {
       setError(e.message || "Unable to create student");
     } finally {
       setSubmittingStudent(false);
+    }
+  }
+
+  async function handleUpdateStudentScores(studentId, payload) {
+    setUpdatingStudentId(studentId);
+    setError("");
+    setNotice("");
+    try {
+      const res = await api(`/api/students/${studentId}`, {
+        token,
+        method: "PUT",
+        body: payload,
+      });
+      const updated = res.student;
+      if (updated) {
+        setAllStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+        setStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      }
+      setNotice("Student scores updated successfully.");
+      return true;
+    } catch (e) {
+      setError(e.message || "Unable to update student scores");
+      return false;
+    } finally {
+      setUpdatingStudentId(null);
     }
   }
 
@@ -460,6 +514,8 @@ export default function AdminWorkspace({ user, token, onLogout }) {
             submitting={submittingStudent}
             onDeleteStudent={handleDeleteStudent}
             deletingStudentId={deletingStudentId}
+            onUpdateStudentScores={handleUpdateStudentScores}
+            updatingStudentId={updatingStudentId}
           />
         ) : null}
 

@@ -63,6 +63,9 @@ async function run() {
   const students = await prisma.student.findMany({
     select: {
       id: true,
+      grade8Score: true,
+      grade9Score: true,
+      grade10Score: true,
       motherJob: true,
       fatherJob: true,
       travelTime: true,
@@ -117,11 +120,14 @@ async function run() {
     const features = {
       G1: mark.g1,
       G2: mark.g2,
-      absences: absencesByStudent.get(s.id) || 0,
-      extracurricular: mark.activities ? 1 : 0,
-      Mjob: encodeJob(s.motherJob),
-      Fjob: encodeJob(s.fatherJob),
+      grade_8_score: clamp(Number(s.grade8Score || 0) / 5, 0, 20),
+      grade_9_score: clamp(Number(s.grade9Score || 0) / 5, 0, 20),
+      grade_10_score: clamp(Number(s.grade10Score || 0) / 5, 0, 20),
       traveltime: toTravelTimeScale(s.travelTime),
+      absences: absencesByStudent.get(s.id) || 0,
+      Mjob: s.motherJob || "other",
+      Fjob: s.fatherJob || "other",
+      activities: mark.activities ? "yes" : "no",
     };
 
     await prisma.prediction.create({

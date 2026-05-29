@@ -6,99 +6,57 @@ from pathlib import Path
 from typing import Iterable, List
 
 import joblib
+import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OrdinalEncoder
 
 
 FEATURE_ORDER = [
     "G1",
     "G2",
-    "absences_scaled",
-    "absences_flag",
-    "extracurricular",
+    "grade_8_score",
+    "grade_9_score",
+    "grade_10_score",
+    "traveltime",
+    "absences",
     "Mjob",
     "Fjob",
-    "traveltime",
+    "activities",
 ]
-LABEL_COL = "grade"
-MODEL_VERSION = "1.0.0"
+
+NUMERICAL_FEATURES = [
+    "G1",
+    "G2",
+    "grade_8_score",
+    "grade_9_score",
+    "grade_10_score",
+    "traveltime",
+    "absences",
+]
+
+CATEGORICAL_FEATURES = [
+    "Mjob",
+    "Fjob",
+    "activities",
+]
+
+LABEL_COL = "G3_pct"
+MODEL_VERSION = "4.0.0"
 RANDOM_SEED = 42
 
-JOB_ENCODING = {
-    "at_home": 0,
-    "health": 1,
-    "other": 2,
-    "services": 3,
-    "teacher": 4,
-}
-
+MJOB_CATEGORIES = ["at_home", "health", "other", "services", "teacher"]
+FJOB_CATEGORIES = ["at_home", "health", "other", "services", "teacher"]
+ACTIVITIES_CATEGORIES = ["no", "yes"]
 
 @dataclass(frozen=True)
 class TrainConfig:
     processed_data_path: Path
     model_path: Path
-
-
-def numeric_to_letter(g3: float) -> str:
-    n = int(round(float(g3)))
-    if n >= 16:
-        return "A"
-    if n >= 13:
-        return "B"
-    if n >= 10:
-        return "C"
-    if n >= 7:
-        return "D"
-    return "F"
-
-
-def encode_job(value: str) -> int:
-    v = str(value).strip()
-    return JOB_ENCODING.get(v, JOB_ENCODING["other"])
-
-
-def encode_yes_no(value: str) -> int:
-    v = str(value).strip().lower()
-    return 1 if v in {"yes", "y", "true", "1"} else 0
-
-
-def transform_absences(value: float) -> int:
-    n = int(round(float(value)))
-    n = max(0, min(n, 30))
-    return n * 3
-
-
-def absence_flag(value: float) -> int:
-    n = int(round(float(value)))
-    return 1 if n >= 10 else 0
-
-
-def boost_extracurricular(value: int) -> int:
-    return int(value) * 6
-
-
-def scale_travel_time(value: int) -> int:
-    n = int(round(float(value)))
-    return max(1, min(n, 4)) * 3
-
-
-def bucket_g2(value: float) -> int:
-    n = int(round(float(value)))
-    if n <= 6:
-        return 0
-    if n <= 9:
-        return 1
-    if n <= 12:
-        return 2
-    if n <= 15:
-        return 3
-    return 4
-
-
-def scale_g2(value: float) -> int:
-    bucket = bucket_g2(value)
-    return [0, 2, 3, 4, 5][bucket]
 
 
 def _drop_index_col(df: pd.DataFrame) -> pd.DataFrame:
@@ -125,25 +83,71 @@ def load_raw_sources(paths: Iterable[Path]) -> pd.DataFrame:
 
 
 def build_processed_dataset(raw: pd.DataFrame) -> pd.DataFrame:
-    required = {"G1", "G2", "G3", "absences", "activities", "Mjob", "Fjob", "traveltime"}
+    required = {
+        "G1",
+        "G2",
+        "G3",
+    }
     missing = sorted([c for c in required if c not in raw.columns])
     if missing:
         raise ValueError(f"Raw dataset missing required columns: {missing}")
 
     df = pd.DataFrame()
-    df["G1"] = pd.to_numeric(raw["G1"], errors="raise")
-    df["G2"] = pd.to_numeric(raw["G2"], errors="raise").map(scale_g2).astype(int)
-    absences = pd.to_numeric(raw["absences"], errors="raise")
-    df["absences_scaled"] = absences.map(transform_absences).astype(int)
-    df["absences_flag"] = absences.map(absence_flag).astype(int)
-    df["extracurricular"] = raw["activities"].map(encode_yes_no).map(boost_extracurricular).astype(int)
-    df["Mjob"] = 0
-    df["Fjob"] = 0
-    df["traveltime"] = 0
+    g1 = pd.to_numeric(raw["G1"], errors="raise").clip(0, 20)
+    g2 = pd.to_numeric(raw["G2"], errors="raise").clip(0, 20)
+    df["G1"] = g1
+    df["G2"] = g2
 
-    df[LABEL_COL] = raw["G3"].map(numeric_to_letter).astype(str)
+    base_pct = ((g1 + g2) / 2) * 5
+    rng = np.random.default_rng(RANDOM_SEED)
 
-  
+    def resolve_score(col_name: str, std: float, bias: float) -> pd.Series:
+        if col_name in raw.columns:
+            series = pd.to_numeric(raw[col_name], errors="coerce")
+            return series.div(5).clip(0, 20)
+
+        noise = rng.normal(loc=bias, scale=std, size=len(base_pct))
+        generated_pct = (base_pct + noise).clip(0, 100)
+        return (generated_pct / 5).clip(0, 20)
+
+    df["grade_8_score"] = resolve_score("grade_8_score", std=10, bias=-2.0)
+    df["grade_9_score"] = resolve_score("grade_9_score", std=8, bias=0.0)
+    df["grade_10_score"] = resolve_score("grade_10_score", std=5, bias=1.5)
+
+    if "traveltime" in raw.columns:
+        travel = pd.to_numeric(raw["traveltime"], errors="coerce")
+        df["traveltime"] = travel.fillna(2).clip(1, 4)
+    else:
+        df["traveltime"] = 2
+
+    if "absences" in raw.columns:
+        absences = pd.to_numeric(raw["absences"], errors="coerce")
+        df["absences"] = absences.fillna(0).clip(0, 93)
+    else:
+        df["absences"] = 0
+
+    def normalize_job(series: pd.Series) -> pd.Series:
+        normalized = series.fillna("other").astype(str).str.lower().str.strip()
+        return normalized.where(normalized.isin(MJOB_CATEGORIES), "other")
+
+    if "Mjob" in raw.columns:
+        df["Mjob"] = normalize_job(raw["Mjob"])
+    else:
+        df["Mjob"] = "other"
+
+    if "Fjob" in raw.columns:
+        df["Fjob"] = normalize_job(raw["Fjob"])
+    else:
+        df["Fjob"] = "other"
+
+    if "activities" in raw.columns:
+        activities = raw["activities"].fillna("no").astype(str).str.lower().str.strip()
+        df["activities"] = activities.where(activities.isin(ACTIVITIES_CATEGORIES), "no")
+    else:
+        df["activities"] = "no"
+
+    df[LABEL_COL] = pd.to_numeric(raw["G3"], errors="raise").clip(0, 20).mul(5)
+
     df = df[FEATURE_ORDER + [LABEL_COL]].copy()
     return df
 
@@ -154,12 +158,13 @@ def load_dataset(path: Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Dataset missing columns: {missing}")
 
-   
     df = df[FEATURE_ORDER + [LABEL_COL]].copy()
-    for col in FEATURE_ORDER:
+    for col in NUMERICAL_FEATURES:
         df[col] = pd.to_numeric(df[col], errors="raise")
+    for col in CATEGORICAL_FEATURES:
+        df[col] = df[col].astype(str)
 
-    df[LABEL_COL] = df[LABEL_COL].astype(str)
+    df[LABEL_COL] = pd.to_numeric(df[LABEL_COL], errors="raise")
     return df
 
 
@@ -172,30 +177,98 @@ def train_model(df: pd.DataFrame) -> dict:
         y,
         test_size=0.2,
         random_state=RANDOM_SEED,
-        stratify=y if y.nunique() > 1 else None,
     )
 
-    model = RandomForestClassifier(
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", "passthrough", NUMERICAL_FEATURES),
+            (
+                "cat",
+                OrdinalEncoder(
+                    categories=[MJOB_CATEGORIES, FJOB_CATEGORIES, ACTIVITIES_CATEGORIES],
+                    handle_unknown="use_encoded_value",
+                    unknown_value=-1,
+                ),
+                CATEGORICAL_FEATURES,
+            ),
+        ],
+        remainder="drop",
+    )
+
+    model = RandomForestRegressor(
         n_estimators=300,
         random_state=RANDOM_SEED,
         n_jobs=-1,
-        class_weight="balanced",
     )
-    model.fit(X_train, y_train)
 
-    acc = float(model.score(X_test, y_test)) if len(X_test) else 1.0
+    pipeline = Pipeline(
+        steps=[
+            ("preprocess", preprocessor),
+            ("model", model),
+        ]
+    )
+
+    pipeline.fit(X_train, y_train)
+
+    preds = pipeline.predict(X_test) if len(X_test) else np.array(y_test)
+    r2 = float(r2_score(y_test, preds)) if len(X_test) else 1.0
+    mae = float(mean_absolute_error(y_test, preds)) if len(X_test) else 0.0
+    rmse = float(np.sqrt(mean_squared_error(y_test, preds))) if len(X_test) else 0.0
 
     bundle = {
-        "model": model,
+        "model": pipeline,
         "meta": {
             "feature_order": FEATURE_ORDER,
+            "numerical_features": NUMERICAL_FEATURES,
+            "categorical_features": CATEGORICAL_FEATURES,
             "label_col": LABEL_COL,
             "model_version": MODEL_VERSION,
             "random_seed": RANDOM_SEED,
-            "test_accuracy": acc,
+            "test_r2": r2,
+            "test_mae": mae,
+            "test_rmse": rmse,
         },
     }
     return bundle
+
+
+def predict(
+    model: Pipeline | dict,
+    *,
+    G1: float,
+    G2: float,
+    grade_8_score: float,
+    grade_9_score: float,
+    grade_10_score: float,
+    traveltime: int,
+    absences: int,
+    Mjob: str,
+    Fjob: str,
+    activities: str,
+) -> float:
+    if isinstance(model, dict):
+        model = model.get("model")
+
+    row = pd.DataFrame(
+        [
+            {
+                "G1": G1,
+                "G2": G2,
+                "grade_8_score": grade_8_score,
+                "grade_9_score": grade_9_score,
+                "grade_10_score": grade_10_score,
+                "traveltime": traveltime,
+                "absences": absences,
+                "Mjob": Mjob,
+                "Fjob": Fjob,
+                "activities": activities,
+            }
+        ],
+        columns=FEATURE_ORDER,
+    )
+
+    pred = float(model.predict(row)[0])
+    return float(np.clip(pred, 0, 100))
 
 
 def main() -> None:
@@ -203,8 +276,8 @@ def main() -> None:
 
     # Raw sources (provided in this repo)
     raw_sources = [
-        base.parent / "ml-service" / "cms data" / "mat2.csv",
-        base.parent / "ml-service" / "cms data" / "por2.csv",
+        Path(r"C:\Users\user\Desktop\CMS\ml-service\cms data\mat2_enhanced.csv"),
+        Path(r"C:\Users\user\Desktop\CMS\ml-service\cms data\por2_enhanced.csv"),
     ]
 
     cfg = TrainConfig(

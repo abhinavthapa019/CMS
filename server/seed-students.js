@@ -90,6 +90,24 @@ function sampleTravelTime() {
   return randInt(1, 4);
 }
 
+function clampFloat(value, min, max, decimals = 1) {
+  const n = Math.min(Math.max(value, min), max);
+  const pow = 10 ** decimals;
+  return Math.round(n * pow) / pow;
+}
+
+function sampleHistoricalScores() {
+  const tierRoll = Math.random();
+  const base = tierRoll < 0.2 ? randInt(50, 62)
+    : tierRoll < 0.55 ? randInt(63, 78)
+      : randInt(79, 94);
+  const drift = () => randInt(-4, 5);
+  const grade8 = clampFloat(base + drift(), 35, 98);
+  const grade9 = clampFloat(grade8 + drift(), 35, 98);
+  const grade10 = clampFloat(grade9 + drift(), 35, 98);
+  return { grade8Score: grade8, grade9Score: grade9, grade10Score: grade10 };
+}
+
 async function run() {
   // Clean student-linked data first so reseeding is repeatable.
   // Note: we only delete student demo users under @students.local to avoid touching real accounts.
@@ -125,6 +143,7 @@ async function run() {
           batch: cls.batch,
           faculty: cls.faculty,
           section: cls.section,
+          ...sampleHistoricalScores(),
           motherJob: pickRandom(jobs),
           fatherJob: pickRandom(jobs),
           travelTime: sampleTravelTime(),

@@ -76,6 +76,9 @@ model Student {
   batch      AcademicBatch
   faculty    Faculty
   section    Section
+  grade8Score  Float    @default(0)
+  grade9Score  Float    @default(0)
+  grade10Score Float    @default(0)
   motherJob  Job
   fatherJob  Job
   travelTime Int
@@ -163,6 +166,7 @@ model Subject {
 
   assignments    TeacherSubjectAssignment[]
   attendanceRows Attendance[]
+  marks          Mark[]
 
   @@unique([name, faculty])
   @@index([faculty])
@@ -221,20 +225,25 @@ model Attendance {
 
 model Mark {
   id         Int      @id @default(autoincrement())
-  g1         Int
-  g2         Int
-  finalGrade Int?
+  g1         Float    @default(0)
+  g2         Float    @default(0)
   activities Boolean  @default(false)
+  marks      Float
   createdAt  DateTime @default(now())
 
   student   Student  @relation(fields: [studentId], references: [id])
   studentId Int
 
-  teacher   User     @relation(fields: [teacherId], references: [id])
-  teacherId Int
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+  subjectId Int
+
+  teacher   User?    @relation(fields: [teacherId], references: [id])
+  teacherId Int?
 
   @@index([studentId])
+  @@index([subjectId])
   @@index([teacherId])
+  @@unique([studentId, subjectId])
 }
 
 model Prediction {
