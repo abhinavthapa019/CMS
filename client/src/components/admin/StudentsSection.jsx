@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { BATCH_OPTIONS, FACULTY_OPTIONS, JOB_OPTIONS, SECTION_OPTIONS } from "./constants";
 import Field from "./Field";
 
@@ -6,6 +6,8 @@ export default function StudentsSection({
   loading,
   allStudents,
   students,
+  subjects,
+  classMarks,
   nextRollNumber,
   classFilter,
   onClassFilterChange,
@@ -35,6 +37,25 @@ export default function StudentsSection({
     if (!Number.isFinite(n)) return "—";
     return Number.isInteger(n) ? String(n) : n.toFixed(1);
   };
+  const formatPreboard = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    return formatScore(n * 5);
+  };
+
+  const classSubjects = useMemo(() => {
+    if (!subjects || subjects.length === 0) return [];
+    return subjects.filter((s) => !s.faculty || s.faculty === classFilter.faculty);
+  }, [subjects, classFilter.faculty]);
+
+  const marksByStudent = useMemo(() => {
+    const map = new Map();
+    (classMarks || []).forEach((mark) => {
+      if (!map.has(mark.studentId)) map.set(mark.studentId, {});
+      map.get(mark.studentId)[mark.subjectId] = mark.g2;
+    });
+    return map;
+  }, [classMarks]);
 
   function applySort(rows) {
     const sorted = [...rows];
@@ -276,28 +297,23 @@ export default function StudentsSection({
             {loading ? (
               <p className="text-sm text-secondary">Loading...</p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full text-sm border-separate border-spacing-y-2">
                 <thead>
                   <tr className="text-left text-secondary border-b border-outline-variant/20">
-                    <th className="py-2 font-semibold">Name</th>
-                    <th className="py-2 font-semibold">Email</th>
-                    <th className="py-2 font-semibold">Roll</th>
-                    <th className="py-2 font-semibold">G8</th>
-                    <th className="py-2 font-semibold">G9</th>
-                    <th className="py-2 font-semibold">G10</th>
-                    <th className="py-2 font-semibold">Actions</th>
+                    <th className="px-4 py-3 font-semibold">Student</th>
+                    <th className="px-4 py-3 font-semibold">Roll</th>
+                    <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {applySort(allStudents || []).map((s) => (
-                    <tr key={s.id} className="border-b border-outline-variant/10">
-                      <td className="py-2 font-medium">{s.firstName} {s.lastName}</td>
-                      <td className="py-2 text-secondary">{renderEmail(s)}</td>
-                      <td className="py-2 text-secondary">{s.rollNumber}</td>
-                      <td className="py-2 text-secondary">{formatScore(s.grade8Score)}</td>
-                      <td className="py-2 text-secondary">{formatScore(s.grade9Score)}</td>
-                      <td className="py-2 text-secondary">{formatScore(s.grade10Score)}</td>
-                      <td className="py-2">
+                    <tr key={s.id} className="bg-surface-container-highest/40">
+                      <td className="px-4 py-4 align-top">
+                        <div className="font-medium">{s.firstName} {s.lastName}</div>
+                        <div className="text-xs text-secondary">{renderEmail(s)}</div>
+                      </td>
+                      <td className="px-4 py-4 text-secondary align-top">{s.rollNumber}</td>
+                      <td className="px-4 py-4 align-top">
                         <button
                           type="button"
                           onClick={() => onDeleteStudent(s)}
@@ -318,79 +334,107 @@ export default function StudentsSection({
         {loading ? (
           <p className="text-sm text-secondary">Loading...</p>
         ) : classSelected ? (
-          <table className="w-full text-sm">
+          <table className="min-w-[1100px] w-full text-sm border-separate border-spacing-y-2">
             <thead>
               <tr className="text-left text-secondary border-b border-outline-variant/20">
-                <th className="py-2 font-semibold">Name</th>
-                <th className="py-2 font-semibold">Email</th>
-                <th className="py-2 font-semibold">Roll</th>
-                <th className="py-2 font-semibold">G8</th>
-                <th className="py-2 font-semibold">G9</th>
-                <th className="py-2 font-semibold">G10</th>
-                <th className="py-2 font-semibold">Mother Job</th>
-                <th className="py-2 font-semibold">Father Job</th>
-                <th className="py-2 font-semibold">Travel</th>
-                <th className="py-2 font-semibold">Actions</th>
+                <th className="px-4 py-3 font-semibold">Student</th>
+                <th className="px-4 py-3 font-semibold">Profile</th>
+                <th className="px-3 py-3 font-semibold text-center min-w-[110px]">
+                  <div className="flex flex-col items-center">
+                    <span>Grade 8</span>
+                    <span className="text-xs text-secondary">Final</span>
+                  </div>
+                </th>
+                <th className="px-3 py-3 font-semibold text-center min-w-[110px]">
+                  <div className="flex flex-col items-center">
+                    <span>Grade 9</span>
+                    <span className="text-xs text-secondary">Final</span>
+                  </div>
+                </th>
+                <th className="px-3 py-3 font-semibold text-center min-w-[110px]">
+                  <div className="flex flex-col items-center">
+                    <span>Grade 10</span>
+                    <span className="text-xs text-secondary">Final</span>
+                  </div>
+                </th>
+                {classSubjects.map((subject) => (
+                  <th key={subject.id} className="px-3 py-3 font-semibold text-center min-w-[120px]">
+                    <div className="flex flex-col items-center">
+                      <span>{subject.name}</span>
+                      <span className="text-xs text-secondary">Pre-board</span>
+                    </div>
+                  </th>
+                ))}
+                <th className="px-4 py-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
               {applySort(students || []).map((s) => (
-                <tr key={s.id} className="border-b border-outline-variant/10">
-                  <td className="py-2 font-medium">{s.firstName} {s.lastName}</td>
-                  <td className="py-2 text-secondary">{renderEmail(s)}</td>
-                  <td className="py-2 text-secondary">{s.rollNumber}</td>
-                  <td className="py-2 text-secondary">
-                    {editingId === s.id ? (
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step="0.1"
-                        value={editScores.grade8Score}
-                        onChange={(e) => setEditScores((prev) => ({ ...prev, grade8Score: e.target.value }))}
-                        className="w-20 rounded-md bg-surface-container-highest border-none"
-                      />
-                    ) : (
-                      formatScore(s.grade8Score)
-                    )}
+                <tr key={s.id} className="bg-surface-container-highest/40">
+                  <td className="px-4 py-4 align-top">
+                    <div className="font-medium">{s.firstName} {s.lastName}</div>
+                    <div className="text-xs text-secondary">{renderEmail(s)}</div>
+                    <div className="text-xs text-secondary">Roll #{s.rollNumber}</div>
                   </td>
-                  <td className="py-2 text-secondary">
-                    {editingId === s.id ? (
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step="0.1"
-                        value={editScores.grade9Score}
-                        onChange={(e) => setEditScores((prev) => ({ ...prev, grade9Score: e.target.value }))}
-                        className="w-20 rounded-md bg-surface-container-highest border-none"
-                      />
-                    ) : (
-                      formatScore(s.grade9Score)
-                    )}
+                  <td className="px-4 py-4 align-top">
+                    <div className="text-xs text-secondary">Mother: {s.motherJob}</div>
+                    <div className="text-xs text-secondary">Father: {s.fatherJob}</div>
+                    <div className="text-xs text-secondary">Travel: {s.travelTime}</div>
                   </td>
-                  <td className="py-2 text-secondary">
-                    {editingId === s.id ? (
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step="0.1"
-                        value={editScores.grade10Score}
-                        onChange={(e) => setEditScores((prev) => ({ ...prev, grade10Score: e.target.value }))}
-                        className="w-20 rounded-md bg-surface-container-highest border-none"
-                      />
-                    ) : (
-                      formatScore(s.grade10Score)
-                    )}
+                  <td className="px-3 py-4 text-center text-secondary align-top">
+                    {formatScore(s.grade8Score)}
                   </td>
-                  <td className="py-2 text-secondary">{s.motherJob}</td>
-                  <td className="py-2 text-secondary">{s.fatherJob}</td>
-                  <td className="py-2 text-secondary">{s.travelTime}</td>
-                  <td className="py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {editingId === s.id ? (
-                        <>
+                  <td className="px-3 py-4 text-center text-secondary align-top">
+                    {formatScore(s.grade9Score)}
+                  </td>
+                  <td className="px-3 py-4 text-center text-secondary align-top">
+                    {formatScore(s.grade10Score)}
+                  </td>
+                  {classSubjects.map((subject) => {
+                    const preboard = marksByStudent.get(s.id)?.[subject.id];
+                    return (
+                      <td key={subject.id} className="px-3 py-4 text-center text-secondary align-top">
+                        {formatPreboard(preboard)}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-4 align-top">
+                    {editingId === s.id ? (
+                      <div className="flex flex-col gap-2 text-xs">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="0.1"
+                          value={editScores.grade8Score}
+                          onChange={(e) => setEditScores((prev) => ({ ...prev, grade8Score: e.target.value }))}
+                          placeholder="G8"
+                          aria-label="Grade 8 score"
+                          className="w-28 rounded-md bg-surface-container-highest border-none"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="0.1"
+                          value={editScores.grade9Score}
+                          onChange={(e) => setEditScores((prev) => ({ ...prev, grade9Score: e.target.value }))}
+                          placeholder="G9"
+                          aria-label="Grade 9 score"
+                          className="w-28 rounded-md bg-surface-container-highest border-none"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="0.1"
+                          value={editScores.grade10Score}
+                          onChange={(e) => setEditScores((prev) => ({ ...prev, grade10Score: e.target.value }))}
+                          placeholder="G10"
+                          aria-label="Grade 10 score"
+                          className="w-28 rounded-md bg-surface-container-highest border-none"
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={async () => {
@@ -415,8 +459,10 @@ export default function StudentsSection({
                           >
                             Cancel
                           </button>
-                        </>
-                      ) : (
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={() => beginEdit(s)}
@@ -424,16 +470,16 @@ export default function StudentsSection({
                         >
                           Edit Scores
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onDeleteStudent(s)}
-                        disabled={deletingStudentId === s.id}
-                        className="px-3 py-1 rounded-md text-xs font-semibold bg-error-container text-error disabled:opacity-60"
-                      >
-                        {deletingStudentId === s.id ? "Deleting..." : "Delete"}
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteStudent(s)}
+                          disabled={deletingStudentId === s.id}
+                          className="px-3 py-1 rounded-md text-xs font-semibold bg-error-container text-error disabled:opacity-60"
+                        >
+                          {deletingStudentId === s.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

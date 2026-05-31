@@ -30,6 +30,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
   const [classTeacherAssignments, setClassTeacherAssignments] = useState([]);
   const [allStudents, setAllStudents] = useState([]);
   const [students, setStudents] = useState([]);
+  const [classMarks, setClassMarks] = useState([]);
   const [fees, setFees] = useState([]);
   const [classFilter, setClassFilter] = useState({
     batch: "ELEVEN",
@@ -134,6 +135,7 @@ export default function AdminWorkspace({ user, token, onLogout }) {
     const classSection = classFilter.section;
     if (!classBatch || !classFaculty || !classSection) {
       setStudents([]);
+      setClassMarks([]);
       return;
     }
 
@@ -142,8 +144,14 @@ export default function AdminWorkspace({ user, token, onLogout }) {
       faculty: classFaculty,
       section: classSection,
     }).toString();
-    api(`/api/students?${q}`, { token })
-      .then((res) => setStudents(res.students || []))
+    Promise.all([
+      api(`/api/students?${q}`, { token }),
+      api(`/api/students/marks?${q}`, { token }),
+    ])
+      .then(([studentsRes, marksRes]) => {
+        setStudents(studentsRes.students || []);
+        setClassMarks(marksRes.marks || []);
+      })
       .catch((e) => setError(e.message || "Failed to load class students"));
   }, [token, user?.role, classFilter.batch, classFilter.faculty, classFilter.section]);
 
@@ -503,6 +511,8 @@ export default function AdminWorkspace({ user, token, onLogout }) {
             loading={loading}
             allStudents={filteredAllStudents}
             students={filteredStudents}
+            subjects={subjects}
+            classMarks={classMarks}
             nextRollNumber={nextRollNumber}
             classFilter={classFilter}
             onClassFilterChange={(field, value) => setClassFilter((prev) => ({ ...prev, [field]: value }))}

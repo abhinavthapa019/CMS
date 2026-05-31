@@ -286,6 +286,39 @@ router.get("/api/students", requireAuth(), async (req, res) => {
   return res.json({ ok: true, students });
 });
 
+router.get("/api/students/marks", requireAuth(Role.ADMIN), async (req, res) => {
+  const validBatch = req.query.batch ? Object.values(AcademicBatch).includes(req.query.batch) : false;
+  const validFaculty = req.query.faculty ? Object.values(Faculty).includes(req.query.faculty) : false;
+  const validSection = req.query.section ? Object.values(Section).includes(req.query.section) : false;
+  if (!validBatch || !validFaculty || !validSection) {
+    return res.status(400).json({ ok: false, error: "batch, faculty, and section are required" });
+  }
+
+  const students = await prisma.student.findMany({
+    where: {
+      batch: req.query.batch,
+      faculty: req.query.faculty,
+      section: req.query.section,
+    },
+    select: { id: true },
+  });
+
+  if (students.length === 0) {
+    return res.json({ ok: true, marks: [] });
+  }
+
+  const marks = await prisma.mark.findMany({
+    where: { studentId: { in: students.map((s) => s.id) } },
+    select: {
+      studentId: true,
+      subjectId: true,
+      g2: true,
+    },
+  });
+
+  return res.json({ ok: true, marks });
+});
+
 router.get("/api/students/me", requireAuth(Role.STUDENT), async (req, res) => {
   try {
     const student = await prisma.student.findFirst({
