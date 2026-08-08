@@ -1,61 +1,8 @@
-# CMS
-
-## Quick start (Windows)
-
-Tip: from the repo root you can run `npm run dev:server` and `npm run dev:client` (or `npm run dev` to print the instructions).
-
-### 1) Backend
-
-```powershell
-cd server
-npm install
-
-# If Prisma generate fails with EPERM on Windows, close other node/prisma processes and run:
-# npm run prisma:generate
-
-# Run migrations (creates DB tables)
-npx prisma migrate dev
-
-# Seed demo data (admin + teachers + subjects + students + march attendance)
-npm run seed:all
-
-# Start API
-npm run dev
-```
-
-Backend runs at `http://localhost:5000`.
-
-### 2) Frontend
-
-```powershell
-cd client
-npm install
-npm run dev
-```
-
-Vite prints the URL (usually `http://localhost:5173`, or the next port if already in use).
-
-## Default demo logins
-
-- Admin
-  - Email: `admin@campus.local`
-  - Password: `admin123`
-
-- Teachers (examples)
-  - `sushil.adhikari@campus.local` / `sushil123`
-  - `rojina.karki@campus.local` / `rojina123`
-
-- Students (only for ELEVEN SCIENCE)
-  - Password: `student123`
-  - Email format: `firstname.lastname<roll>@students.local`
-    - Example: `aarav.shrestha1@students.local`
-
-## Environment variables
-
-- Backend: `server/.env`
-  - `DATABASE_URL=...` (PostgreSQL connection string)
-  - `JWT_SECRET=...` (optional; defaults to `dev-secret`)
-  - `PORT=5000` (optional)
-
-- Frontend: `client/.env` (optional)
-  - `VITE_API_URL=http://localhost:5000`
+Centralizes workflows such as student and teacher management, attendance, fee collection, 
+notices, assignment submissions and final grade prediction into a single platform  
+● Final year project, followed SDLC development phase along with complete documentation 
+● Implemented concepts of RBAC, layered architecture, file management and machine 
+learning 
+● Used dataset from Kaggle for final grade prediction with Random Forest Algorithm 
+achieving R² = 0.858 and MAE = 4.5, explaining 85.8% of variance with an average 
+prediction error of ~4.5 percentage points. 
